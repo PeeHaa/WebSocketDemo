@@ -10,6 +10,7 @@ ini_set('date.timezone', 'Europe/Amsterdam');
 <html>
   <head>
     <title>WebSucket POC</title>
+    <meta content="text/html;charset=utf-8" http-equiv="Content-Type">
   </head>
   <body>
     <script>

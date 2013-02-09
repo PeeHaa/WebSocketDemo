@@ -522,4 +522,4 @@ $requestFactory  = new RequestFactory();
 $responseFactory = new ResponseFactory();
 $webSocket       = new WebSocket($clientFactory, $requestFactory, $responseFactory);
 
-$webSocket->start('127.0.0.1', 1337);
+$webSocket->start('37.34.48.200', 1337);
