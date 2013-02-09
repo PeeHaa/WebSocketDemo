@@ -13,6 +13,8 @@ ini_set('date.timezone', 'Europe/Amsterdam');
     <meta content="text/html;charset=utf-8" http-equiv="Content-Type">
   </head>
   <body>
+    <a href="#" id="random">Send random message</a>
+    <a href="#" id="debug">Send debug message</a>
     <script>
     (function() {
       try{
@@ -20,7 +22,6 @@ ini_set('date.timezone', 'Europe/Amsterdam');
           console.log('Socket status: '+socket.readyState);
           socket.onopen = function(){
              console.log('Socket status: '+socket.readyState+' (open)');
-             socket.send('This is sent to the server...');
           }
           socket.onmessage = function(msg){
              console.log('Received shit: '+msg.data);
@@ -31,6 +32,14 @@ ini_set('date.timezone', 'Europe/Amsterdam');
       } catch(exception){
          console.log('FAIL: '+exception);
       }
+
+      document.getElementById('random').addEventListener('click', function() {
+          socket.send('Random message to server');
+      });
+
+      document.getElementById('debug').addEventListener('click', function() {
+          socket.send('debug');
+      });
     }());
     </script>
   </body>

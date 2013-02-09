@@ -361,7 +361,13 @@ class WebSocket
     {
         $this->broadcast('> ' . $message);
 
-        $encodeMessage = $this->encodeMessage('response', self::OP_TEXT, self::ATTR_FIN);
+        if ($message == 'debug') {
+            $encodeMessage = $this->encodeMessagex('response', 'text', false);
+        } else {
+            $encodeMessage = $this->encodeMessage('response', self::OP_TEXT, self::ATTR_FIN);
+        }
+
+        //$encodeMessage = $this->encodeMessage('response', self::OP_TEXT, self::ATTR_FIN);
 
         socket_write($clientSocket, $encodeMessage, strlen($encodeMessage));
 
