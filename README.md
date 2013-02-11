@@ -20,6 +20,11 @@ Implementation
 
 RFC 6455
 
+PHP version
+-
+
+5.4+
+
 License
 -
 
