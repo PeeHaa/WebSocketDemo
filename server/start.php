@@ -10,10 +10,10 @@ use WebSocketServer\Event\Handler,
     WebSocketServer\Http\RequestFactory,
     WebSocketServer\Http\ResponseFactory,
     WebSocketServer\Cache\Queue,
-    WebSocketServer\Socket\Frame\Encoder,
-    WebSocketServer\Socket\Frame\Decoder,
+    WebSocketServer\Socket\FrameFactory,
     WebSocketServer\Core\Server,
-    WebSocketServer\Socket\Client;
+    WebSocketServer\Socket\Client,
+    WebSocketServer\Socket\Frame;
 
 // setup environment
 error_reporting(E_ALL);
@@ -35,7 +35,7 @@ class EventHandler implements Handler
      */
     public function onConnect(Server $server, Client $client)
     {
-        $server->sendToAllButClient('A new user (' . $client->getSocket() . ') connected', $client);
+        $server->sendToAllButClient('User #' . $client->getId() . ' entered the room', $client);
     }
 
     /**
@@ -43,11 +43,11 @@ class EventHandler implements Handler
      *
      * @param \WebSocketServer\Core\Server   $server  The websocket server
      * @param \WebSocketServer\Socket\Client $client  The client
-     * @param string                         $message The message
+     * @param \WebSocketServer\Socket\Frame  $frame The message
      */
-    public function onMessage(Server $server, Client $client, $message)
+    public function onMessage(Server $server, Client $client, Frame $frame)
     {
-        $server->broadcast('User (' . $client->getSocket() . '): ' . $message);
+        $server->broadcast('#' . $client->getId() . ': ' . $frame->getData());
     }
 
     /**
@@ -58,7 +58,19 @@ class EventHandler implements Handler
      */
     public function onDisconnect(Server $server, Client $client)
     {
-        $server->sendToAllButClient('User (' . $client->getSocket() . ') disconnected', $client);
+        $server->sendToAllButClient('User #' . $client->getId() . ' left the room', $client);
+    }
+
+    /**
+     * Callback when a client suffers an error
+     *
+     * @param \WebSocketServer\Core\Server   $server  The websocket server
+     * @param \WebSocketServer\Socket\Client $client  The client
+     * @param string                         $message The error description
+     */
+    public function onError(Server $server, Client $client, $message)
+    {
+        $server->sendToAllButClient('User #' . $client->getId() . ' fell over', $client);
     }
 }
 
@@ -67,11 +79,10 @@ class EventHandler implements Handler
  */
 $eventHandler    = new EventHandler();
 $logger          = new EchoOutput();
-$clientFactory   = new ClientFactory();
 $requestFactory  = new RequestFactory();
 $responseFactory = new ResponseFactory();
-$frameEncoder    = new Encoder(new Queue());
-$frameDecoder    = new Decoder(new Queue());
-$socketServer    = new Server($eventHandler, $logger, $clientFactory, $requestFactory, $responseFactory, $frameEncoder, $frameDecoder);
+$frameFactory    = new FrameFactory();
+$clientFactory   = new ClientFactory($eventHandler, $logger, $requestFactory, $responseFactory, $frameFactory);
+$socketServer    = new Server($eventHandler, $logger, $clientFactory);
 
-$socketServer->start('127.0.0.1', 1337);
+$socketServer->start('0.0.0.0', 1337);

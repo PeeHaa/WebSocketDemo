@@ -14,7 +14,8 @@
 namespace WebSocketServer\Event;
 
 use WebSocketServer\Core\Server,
-    WebSocketServer\Socket\Client;
+    WebSocketServer\Socket\Client,
+    WebSocketServer\Socket\Frame;
 
 /**
  * Interface for the socket event handlers
@@ -38,9 +39,9 @@ interface Handler
      *
      * @param \WebSocketServer\Core\Server   $server  The websocket server
      * @param \WebSocketServer\Socket\Client $client  The client
-     * @param string                         $message The message
+     * @param \WebSocketServer\Socket\Frame  $frame The message
      */
-    public function onMessage(Server $server, Client $client, $message);
+    public function onMessage(Server $server, Client $client, Frame $frame);
 
     /**
      * Callback when a client disconnects
@@ -49,4 +50,13 @@ interface Handler
      * @param \WebSocketServer\Socket\Client $client The client
      */
     public function onDisconnect(Server $server, Client $client);
+
+    /**
+     * Callback when a client suffers an error
+     *
+     * @param \WebSocketServer\Core\Server   $server  The websocket server
+     * @param \WebSocketServer\Socket\Client $client  The client
+     * @param string                         $message The error description
+     */
+    public function onError(Server $server, Client $client, $message);
 }
