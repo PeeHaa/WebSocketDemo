@@ -35,7 +35,7 @@ class EventHandler implements Handler
      */
     public function onConnect(Server $server, Client $client)
     {
-        $server->sendToAllButClient('A new user (' . $client->getSocket() . ') connected', $client);
+        $server->sendToAllButClient('User #' . $client->getId() . ' entered the room', $client);
     }
 
     /**
@@ -47,7 +47,7 @@ class EventHandler implements Handler
      */
     public function onMessage(Server $server, Client $client, $message)
     {
-        $server->broadcast('User (' . $client->getSocket() . '): ' . $message);
+        $server->broadcast('#' . $client->getId() . ': ' . $message);
     }
 
     /**
@@ -58,7 +58,7 @@ class EventHandler implements Handler
      */
     public function onDisconnect(Server $server, Client $client)
     {
-        $server->sendToAllButClient('User (' . $client->getSocket() . ') disconnected', $client);
+        $server->sendToAllButClient('User #' . $client->getId() . ' left the room', $client);
     }
 }
 
@@ -67,11 +67,11 @@ class EventHandler implements Handler
  */
 $eventHandler    = new EventHandler();
 $logger          = new EchoOutput();
-$clientFactory   = new ClientFactory();
 $requestFactory  = new RequestFactory();
 $responseFactory = new ResponseFactory();
 $frameEncoder    = new Encoder(new Queue());
 $frameDecoder    = new Decoder(new Queue());
-$socketServer    = new Server($eventHandler, $logger, $clientFactory, $requestFactory, $responseFactory, $frameEncoder, $frameDecoder);
+$clientFactory   = new ClientFactory($eventHandler, $logger, $requestFactory, $responseFactory, $frameEncoder, $frameDecoder);
+$socketServer    = new Server($eventHandler, $logger, $clientFactory);
 
-$socketServer->start('127.0.0.1', 1337);
+$socketServer->start('0.0.0.0', 1337);
