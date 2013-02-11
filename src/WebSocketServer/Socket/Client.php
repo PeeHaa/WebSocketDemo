@@ -17,9 +17,7 @@ use \WebSocketServer\Core\Server,
     \WebSocketServer\Event\Handler as EventHandler,
     \WebSocketServer\Log\Loggable,
     \WebSocketServer\Http\RequestFactory,
-    \WebSocketServer\Http\ResponseFactory,
-    \WebSocketServer\Socket\Frame\Encoder,
-    \WebSocketServer\Socket\Frame\Decoder;
+    \WebSocketServer\Http\ResponseFactory;
 
 /**
  * This class represents a client
@@ -68,14 +66,9 @@ class Client
     private $responseFactory;
 
     /**
-     * @var \WebSocketServer\Socket\Frame\Encoder Socket frame encoder
+     * @var \WebSocketServer\Socket\FrameFactory Frame factory
      */
-    private $encoder;
-
-    /**
-     * @var \WebSocketServer\Socket\Frame\Decoder Socket frame decoder
-     */
-    private $decoder;
+    private $frameFactory;
 
     /**
      * @var boolean Whether the client already performed the handshake
@@ -83,9 +76,9 @@ class Client
     private $handshakeComplete = false;
 
     /**
-     * @var array A temporary store of outstanding messages
+     * @var array A temporary store of an outstanding frame
      */
-    private $pendingMessages = [];
+    private $pendingDataFrame;
 
     /**
      * Build the instance of the socket client
@@ -96,8 +89,7 @@ class Client
      * @param \WebSocketServer\Log\Loggable         $logger          The logger
      * @param \WebSocketServer\Http\RequestFactory  $requestFactory  Factory which http request objects
      * @param \WebSocketServer\Http\ResponseFactory $responseFactory Factory which http response objects
-     * @param \WebSocketServer\Socket\Frame\Encoder $encoder         Socket frame encoder
-     * @param \WebSocketServer\Socket\Frame\Decoder $decoder         Socket frame decoder
+     * @param \WebSocketServer\Socket\FrameFactory  $frameFactory    Frame factory
      */
     public function __construct(
         $socket,
@@ -106,8 +98,7 @@ class Client
         Loggable $logger,
         RequestFactory $requestFactory,
         ResponseFactory $responseFactory,
-        Encoder $encoder,
-        Decoder $decoder
+        FrameFactory $frameFactory
     ) {
         $this->socket = $socket;
         $this->id     = (int) $socket;
@@ -117,8 +108,7 @@ class Client
         $this->logger          = $logger;
         $this->requestFactory  = $requestFactory;
         $this->responseFactory = $responseFactory;
-        $this->encoder         = $encoder;
-        $this->decoder         = $decoder;
+        $this->frameFactory    = $frameFactory;
     }
 
     /**
@@ -171,9 +161,34 @@ class Client
      */
     private function processMessage($message)
     {
-        $this->logger->write('Received message: ' . $this->decoder->getDecodedMessage($message));
+        try {
+            try {
+                $frame = isset($this->pendingDataFrame) ? $this->pendingDataFrame : $this->frameFactory->create();
+                $frame->fromRawData($message);
 
-        $this->eventHandler->onMessage($this->server, $this, $this->decoder->getDecodedMessage($message));
+                if (!$frame->isFin()) {
+                    $this->pendingDataFrame = $frame;
+                } else {
+                    unset($this->pendingDataFrame);
+                }
+            } catch (NewControlFrameException $e) {
+                $frame = $this->frameFactory->create();
+                $frame->fromRawData($message);
+            }
+
+            if ($frame->isFin()) {
+                $this->logger->write('Client #' . $this->id . ' received message: ' . $frame->getData());
+
+                $this->eventHandler->onMessage($this->server, $this, $frame);
+            } else {
+                $this->logger->write('Client #' . $this->id . ' received partial message');
+            }
+        } catch (\Exception $e) {
+            $this->logger->write($e->getMessage());
+            $this->eventHandler->onError($this->server, $this, $e->getMessage());
+
+            $this->disconnect();
+        }
     }
 
     /**
@@ -253,18 +268,48 @@ class Client
         return $this->handshakeComplete;
     }
 
+    private function sendFrame($frame) {
+        $data = $frame->toRawData();
+        socket_write($this->socket, $data, strlen($data));
+    }
+
     /**
-     * Send a message to a specific client
+     * Send a text message to a specific client
      *
      * @param string                         $message The message to be send
      * @param \WebSocketServer\Socket\Client $client  The client to send the message to
      */
-    public function sendMessage($message)
+    public function sendText($message)
     {
-        $this->logger->write('Sending message to client #' . $this->id . ': ' . $message);
+        $frame = $this->frameFactory->create();
 
-        $message = $this->encoder->getEncodedMessage($message);
-        socket_write($this->socket, $message, strlen($message));
+        $frame->setData($message);
+        $frame->setOpcode(Frame::OP_TEXT);
+        $frame->setFin(true);
+
+        $this->logger->write('Sending message to client #' . $this->id . ': ' . $message);
+        $this->sendFrame($frame);
     }
 
+    /**
+     * Send a close message to a specific client
+     *
+     * @param string                         $message The message to be send
+     * @param \WebSocketServer\Socket\Client $client  The client to send the message to
+     */
+    public function sendClose($message = '')
+    {
+        $frame = $this->frameFactory->create();
+
+        if (strlen($message) > 125) {
+            $message = substr($message, 0, 125);
+        }
+
+        $frame->setData($message);
+        $frame->setOpcode(Frame::OP_CLOSE);
+        $frame->setFin(true);
+
+        $this->logger->write('Sending close frame to client #' . $this->id . ': ' . $message);
+        $this->sendFrame($frame);
+    }
 }

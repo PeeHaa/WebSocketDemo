@@ -10,10 +10,10 @@ use WebSocketServer\Event\Handler,
     WebSocketServer\Http\RequestFactory,
     WebSocketServer\Http\ResponseFactory,
     WebSocketServer\Cache\Queue,
-    WebSocketServer\Socket\Frame\Encoder,
-    WebSocketServer\Socket\Frame\Decoder,
+    WebSocketServer\Socket\FrameFactory,
     WebSocketServer\Core\Server,
-    WebSocketServer\Socket\Client;
+    WebSocketServer\Socket\Client,
+    WebSocketServer\Socket\Frame;
 
 // setup environment
 error_reporting(E_ALL);
@@ -43,11 +43,11 @@ class EventHandler implements Handler
      *
      * @param \WebSocketServer\Core\Server   $server  The websocket server
      * @param \WebSocketServer\Socket\Client $client  The client
-     * @param string                         $message The message
+     * @param \WebSocketServer\Socket\Frame  $frame The message
      */
-    public function onMessage(Server $server, Client $client, $message)
+    public function onMessage(Server $server, Client $client, Frame $frame)
     {
-        $server->broadcast('#' . $client->getId() . ': ' . $message);
+        $server->broadcast('#' . $client->getId() . ': ' . $frame->getData());
     }
 
     /**
@@ -60,6 +60,18 @@ class EventHandler implements Handler
     {
         $server->sendToAllButClient('User #' . $client->getId() . ' left the room', $client);
     }
+
+    /**
+     * Callback when a client suffers an error
+     *
+     * @param \WebSocketServer\Core\Server   $server  The websocket server
+     * @param \WebSocketServer\Socket\Client $client  The client
+     * @param string                         $message The error description
+     */
+    public function onError(Server $server, Client $client, $message)
+    {
+        $server->sendToAllButClient('User #' . $client->getId() . ' fell over', $client);
+    }
 }
 
 /**
@@ -69,9 +81,8 @@ $eventHandler    = new EventHandler();
 $logger          = new EchoOutput();
 $requestFactory  = new RequestFactory();
 $responseFactory = new ResponseFactory();
-$frameEncoder    = new Encoder(new Queue());
-$frameDecoder    = new Decoder(new Queue());
-$clientFactory   = new ClientFactory($eventHandler, $logger, $requestFactory, $responseFactory, $frameEncoder, $frameDecoder);
+$frameFactory    = new FrameFactory();
+$clientFactory   = new ClientFactory($eventHandler, $logger, $requestFactory, $responseFactory, $frameFactory);
 $socketServer    = new Server($eventHandler, $logger, $clientFactory);
 
 $socketServer->start('0.0.0.0', 1337);

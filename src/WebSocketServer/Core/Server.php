@@ -161,6 +161,10 @@ class Server
 
         $this->eventHandler->onDisconnect($this, $client);
 
+        if ($client->didHandshake()) {
+            $client->sendClose();
+        }
+
         socket_close($client->getSocket());
         unset($this->clients[$id], $this->sockets[$id]);
 
@@ -206,7 +210,7 @@ class Server
         $this->logger->write('Broadcasting message to all clients: ' . $message);
 
         foreach ($this->clients as $client) {
-            $client->sendMessage($message);
+            $client->sendText($message);
         }
     }
 
@@ -225,7 +229,7 @@ class Server
                 continue;
             }
 
-            $client->sendMessage($message);
+            $client->sendText($message);
         }
     }
 }

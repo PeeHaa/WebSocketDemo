@@ -17,9 +17,7 @@ use \WebSocketServer\Core\Server,
     \WebSocketServer\Event\Handler as EventHandler,
     \WebSocketServer\Log\Loggable,
     \WebSocketServer\Http\RequestFactory,
-    \WebSocketServer\Http\ResponseFactory,
-    \WebSocketServer\Socket\Frame\Encoder,
-    \WebSocketServer\Socket\Frame\Decoder;
+    \WebSocketServer\Http\ResponseFactory;
 
 /**
  * This factory builds client sockets
@@ -51,15 +49,9 @@ class ClientFactory
     private $responseFactory;
 
     /**
-     * @var \WebSocketServer\Socket\Frame\Encoder Socket frame encoder
+     * @var \WebSocketServer\Socket\FrameFactory Frame factory
      */
-    private $encoder;
-
-    /**
-     * @var \WebSocketServer\Socket\Frame\Decoder Socket frame decoder
-     */
-    private $decoder;
-
+    private $frameFactory;
 
     /**
      * Build the client factory object
@@ -68,23 +60,20 @@ class ClientFactory
      * @param \WebSocketServer\Log\Loggable         $logger          The logger
      * @param \WebSocketServer\Http\RequestFactory  $requestFactory  Factory which http request objects
      * @param \WebSocketServer\Http\ResponseFactory $responseFactory Factory which http response objects
-     * @param \WebSocketServer\Socket\Frame\Encoder $encoder         Socket frame encoder
-     * @param \WebSocketServer\Socket\Frame\Decoder $decoder         Socket frame decoder
+     * @param \WebSocketServer\Socket\FrameFactory  $frameFactory    Frame factory
      */
     public function __construct(
         EventHandler $eventHandler,
         Loggable $logger,
         RequestFactory $requestFactory,
         ResponseFactory $responseFactory,
-        Encoder $encoder,
-        Decoder $decoder
+        FrameFactory $frameFactory
     ) {
         $this->eventHandler    = $eventHandler;
         $this->logger          = $logger;
         $this->requestFactory  = $requestFactory;
         $this->responseFactory = $responseFactory;
-        $this->encoder         = $encoder;
-        $this->decoder         = $decoder;
+        $this->frameFactory    = $frameFactory;
     }
 
     /**
@@ -104,8 +93,7 @@ class ClientFactory
             $this->logger,
             $this->requestFactory,
             $this->responseFactory,
-            $this->encoder,
-            $this->decoder
+            $this->frameFactory
         );
     }
 }
