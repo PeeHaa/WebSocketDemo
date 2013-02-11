@@ -130,8 +130,10 @@ class Server
                 if ($changedSocket == $this->master) {
                     $client = socket_accept($this->master);
 
-                    if ($client < 0) {
-                        $this->logger->write('socket_accept() failed');
+                    if (!$client) {
+                        $errCode = socket_last_error($this->master);
+                        $errStr = socket_strerror($errCode);
+                        $this->logger->write('socket_accept() failed: '.$errCode.': '.$errStr);
                         continue;
                     }
 
