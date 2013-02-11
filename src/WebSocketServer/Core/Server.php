@@ -53,6 +53,11 @@ class Server
     private $sockets = [];
 
     /**
+     * @var \WebSocketServer\Socket\Client[] List of all the connected clients
+     */
+    private $clients = [];
+
+    /**
      * Build the server object
      *
      * @param \WebSocketServer\Event\Handler        $eventHandler    The event handler
