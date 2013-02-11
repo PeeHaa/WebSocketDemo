@@ -1,46 +1,16 @@
-<?php
-
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-ini_set('log_errors', 0);
-
-ini_set('date.timezone', 'Europe/Amsterdam');
-?>
-
 <html>
   <head>
-    <title>WebSucket POC</title>
-    <meta content="text/html;charset=utf-8" http-equiv="Content-Type">
+    <title>WebSocket simple chat application demo</title>
+    <link rel="stylesheet" type="text/css" href="/style/style.css">
   </head>
   <body>
-    <a href="#" id="random">Send random message</a>
-    <a href="#" id="debug">Send debug message</a>
-    <script>
-    (function() {
-      try{
-          var socket = new WebSocket('ws://websucket.pieterhordijk.com:1337/Websocket.php');
-          console.log('Socket status: '+socket.readyState);
-          socket.onopen = function(){
-             console.log('Socket status: '+socket.readyState+' (open)');
-          }
-          socket.onmessage = function(msg){
-             console.log('Received shit: '+msg.data);
-          }
-          socket.onclose = function(){
-            console.log('Socket status: '+socket.readyState+' (Closed)');
-          }
-      } catch(exception){
-         console.log('FAIL: '+exception);
-      }
-
-      document.getElementById('random').addEventListener('click', function() {
-          socket.send('Random message to server');
-      });
-
-      document.getElementById('debug').addEventListener('click', function() {
-          socket.send('debug');
-      });
-    }());
-    </script>
+    <div id="conversation">
+    </div>
+    <form action="#" id="send-message">
+      <input type="text" name="message" id="message">
+      <input type="submit" name="submit" value="Send">
+    </form>
+    <script src="/js/WebSocket.js"></script>
+    <script src="/js/main.js"></script>
   </body>
 </html>
