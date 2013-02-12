@@ -13,11 +13,12 @@
  */
 namespace WebSocketServer\Socket;
 
-use \WebSocketServer\Core\Server,
-    \WebSocketServer\Event\Handler as EventHandler,
-    \WebSocketServer\Log\Loggable,
+use \WebSocketServer\Event\Emitter as EventEmitter,
+    \WebSocketServer\Event\EventFactory,
+    \WebSocketServer\Core\Server,
     \WebSocketServer\Http\RequestFactory,
-    \WebSocketServer\Http\ResponseFactory;
+    \WebSocketServer\Http\ResponseFactory,
+    \WebSocketServer\Log\Loggable;
 
 /**
  * This class represents a client
@@ -26,7 +27,7 @@ use \WebSocketServer\Core\Server,
  * @package    Socket
  * @author     Pieter Hordijk <info@pieterhordijk.com>
  */
-class Client
+class Client implements EventEmitter
 {
     const SIGNING_KEY = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 
@@ -46,9 +47,9 @@ class Client
     private $server;
 
     /**
-     * @var \WebSocketServer\Event\Handler Event handler
+     * @var \WebSocketServer\Event\EventFactory Event factory
      */
-    private $eventHandler;
+    private $eventFactory;
 
     /**
      * @var \WebSocketServer\Log\Loggable The logger
@@ -81,34 +82,51 @@ class Client
     private $pendingDataFrame;
 
     /**
+     * @var array[] Collection of registered event handlers
+     */
+    private $eventHandlers = [];
+
+    /**
      * Build the instance of the socket client
      *
      * @param resource                              $socket          The socket the client uses
      * @param \WebSocketServer\Core\Server          $server          The server to which this client belongs
-     * @param \WebSocketServer\Event\Handler        $eventHandler    The event handler
-     * @param \WebSocketServer\Log\Loggable         $logger          The logger
+     * @param \WebSocketServer\Event\EventFactory   $eventHandler    The event handler
      * @param \WebSocketServer\Http\RequestFactory  $requestFactory  Factory which http request objects
      * @param \WebSocketServer\Http\ResponseFactory $responseFactory Factory which http response objects
      * @param \WebSocketServer\Socket\FrameFactory  $frameFactory    Frame factory
+     * @param \WebSocketServer\Log\Loggable         $logger          The logger
      */
     public function __construct(
         $socket,
         Server $server,
-        EventHandler $eventHandler,
-        Loggable $logger,
+        EventFactory $eventFactory,
         RequestFactory $requestFactory,
         ResponseFactory $responseFactory,
-        FrameFactory $frameFactory
+        FrameFactory $frameFactory,
+        Loggable $logger = null
     ) {
         $this->socket = $socket;
         $this->id     = (int) $socket;
 
         $this->server          = $server;
-        $this->eventHandler    = $eventHandler;
-        $this->logger          = $logger;
+        $this->eventFactory    = $eventFactory;
         $this->requestFactory  = $requestFactory;
         $this->responseFactory = $responseFactory;
         $this->frameFactory    = $frameFactory;
+        $this->logger          = $logger;
+    }
+
+    /**
+     * Log a message to logger if defined
+     *
+     * @param string $message The message
+     */
+    private function log($message, $level = Loggable::LEVEL_INFO)
+    {
+        if (isset($this->logger)) {
+            $this->logger->write($message, $level);
+        }
     }
 
     /**
@@ -118,8 +136,8 @@ class Client
      */
     private function shakeHands($buffer)
     {
-        $this->logger->write('Starting handshake process');
-        $this->logger->write("Client data: \n" . $buffer);
+        $this->log('Starting handshake process');
+        $this->log("Client data: \n" . $buffer, Loggable::LEVEL_DEBUG);
 
         $request  = $this->requestFactory->create($buffer);
         $request->parse();
@@ -138,8 +156,8 @@ class Client
 
         $this->handshakeComplete = true;
 
-        $this->logger->write('Shaking hands with client');
-        $this->logger->write("Data sent to client: \n" . $responseString);
+        $this->log('Shaking hands with client');
+        $this->log("Data sent to client: \n" . $responseString, Loggable::LEVEL_DEBUG);
     }
 
     /**
@@ -176,16 +194,19 @@ class Client
                 $frame->fromRawData($message);
             }
 
-            if ($frame->isFin()) {
-                $this->logger->write('Client #' . $this->id . ' received message: ' . $frame->getData());
+            $this->trigger('frame', $this, $frame);
 
-                $this->eventHandler->onMessage($this->server, $this, $frame);
+            if ($frame->isFin()) {
+                $this->log('Client #' . $this->id . ' received message');
+                $this->log('Message data: ' . $frame->getData(), Loggable::LEVEL_DEBUG);
+
+                $this->trigger('message', $this, $frame);
             } else {
-                $this->logger->write('Client #' . $this->id . ' received partial message');
+                $this->log('Client #' . $this->id . ' received partial message', Loggable::LEVEL_DEBUG);
             }
         } catch (\Exception $e) {
-            $this->logger->write($e->getMessage());
-            $this->eventHandler->onError($this->server, $this, $e->getMessage());
+            $this->log($e->getMessage(), Loggable::LEVEL_ERROR);
+            $this->trigger('error', $this, $e->getMessage());
 
             $this->disconnect();
         }
@@ -223,9 +244,35 @@ class Client
 
     /**
      * Disconnect client
+     *
+     * @param string $message The message to be send
      */
-    public function diconnect() {
-        $this->server->disconnectClient($this);
+    public function disconnect($closeMessage = '')
+    {
+        if ($this->isConnected()) {
+            if ($this->didHandshake()) {
+                $this->sendClose($closeMessage);
+            }
+
+            socket_close($this->socket);
+            $this->socket = null;            
+
+            $this->trigger('disconnect', $this);
+
+            if ($this->server->getClientById($this->id)) {
+                $this->server->removeClient($this);
+            }
+        }
+    }
+
+    /**
+     * Determine whether the client socket is connected
+     *
+     * @return bool Whether the client socket is connected
+     */
+    public function isConnected()
+    {
+        return (bool) $this->socket;
     }
 
     /**
@@ -268,7 +315,13 @@ class Client
         return $this->handshakeComplete;
     }
 
-    private function sendFrame($frame) {
+    /**
+     * Write a frame to the socket
+     *
+     * @param \WebSocketServer\Socket\Frame $frame The frame to be send
+     */
+    private function sendFrame($frame)
+    {
         $data = $frame->toRawData();
         socket_write($this->socket, $data, strlen($data));
     }
@@ -276,8 +329,7 @@ class Client
     /**
      * Send a text message to a specific client
      *
-     * @param string                         $message The message to be send
-     * @param \WebSocketServer\Socket\Client $client  The client to send the message to
+     * @param string $message The message to be send
      */
     public function sendText($message)
     {
@@ -287,15 +339,16 @@ class Client
         $frame->setOpcode(Frame::OP_TEXT);
         $frame->setFin(true);
 
-        $this->logger->write('Sending message to client #' . $this->id . ': ' . $message);
+        $this->log('Sending message to client #' . $this->id);
+        $this->log('Message data: ' . $message, Loggable::LEVEL_DEBUG);
+
         $this->sendFrame($frame);
     }
 
     /**
      * Send a close message to a specific client
      *
-     * @param string                         $message The message to be send
-     * @param \WebSocketServer\Socket\Client $client  The client to send the message to
+     * @param string $message The message to be send
      */
     public function sendClose($message = '')
     {
@@ -309,7 +362,69 @@ class Client
         $frame->setOpcode(Frame::OP_CLOSE);
         $frame->setFin(true);
 
-        $this->logger->write('Sending close frame to client #' . $this->id . ': ' . $message);
+        $this->log('Sending close frame to client #' . $this->id);
+        $this->log('Message data: ' . $message, Loggable::LEVEL_DEBUG);
+
         $this->sendFrame($frame);
+    }
+
+    /**
+     * Register an event handler callback
+     *
+     * @param string   $eventName The event name
+     * @param callable $callback  The event handler
+     */
+    public function on($eventName, callable $callback)
+    {
+        if (!isset($this->eventHandlers[$eventName])) {
+            $this->eventHandlers[$eventName] = [];
+        }
+
+        $this->eventHandlers[$eventName][] = $callback;
+    }
+
+    /**
+     * Unregister a single event handler callback or all handlers for an event
+     *
+     * @param string   $eventName The event name
+     * @param callable $callback  The event handler
+     */
+    public function off($eventName, callable $callback = null)
+    {
+        if (isset($this->eventHandlers[$eventName])) {
+            if (isset($callback)) {
+                $key = array_search($callback, $this->eventHandlers[$eventName], true);
+                if ($key !== false) {
+                    array_splice($this->eventHandlers[$eventName], $key, 1);
+                }
+            } else {
+                $this->eventHandlers[$eventName] = [];
+            }
+        }
+    }
+
+    /**
+     * Trigger an event
+     *
+     * @param string $eventName The event name
+     * @param mixed  $arg,...   Arguments passed to the event handler
+     */
+    public function trigger($eventName)
+    {
+        if (isset($this->eventHandlers[$eventName])) {
+            $args = func_get_args();
+            array_shift($args);
+
+            $event = $this->eventFactory->create($this, $eventName, $args);
+            array_unshift($args, $event);
+
+            foreach ($this->eventHandlers[$eventName] as $handler) {
+                $result = call_user_func_array($handler, $args);
+
+                if ($result === false || $event->isContinuationStopped()) {
+                    break;
+                }
+            }
+        }
     }
 }

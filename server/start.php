@@ -4,16 +4,12 @@
  * Simple example of a chat server
  */
 
-use WebSocketServer\Event\Handler,
-    WebSocketServer\Log\EchoOutput,
-    WebSocketServer\Socket\ClientFactory,
-    WebSocketServer\Http\RequestFactory,
-    WebSocketServer\Http\ResponseFactory,
-    WebSocketServer\Cache\Queue,
-    WebSocketServer\Socket\FrameFactory,
-    WebSocketServer\Core\Server,
-    WebSocketServer\Socket\Client,
-    WebSocketServer\Socket\Frame;
+use \WebSocketServer\Core\ServerFactory,
+    \WebSocketServer\Core\Server,
+    \WebSocketServer\Event\Event,
+    \WebSocketServer\Socket\Client,
+    \WebSocketServer\Socket\Frame,
+    \WebSocketServer\Log\Loggable;
 
 // setup environment
 error_reporting(E_ALL);
@@ -25,64 +21,146 @@ ob_implicit_flush();
 // load the lib
 require __DIR__ . '/../src/WebSocketServer/bootstrap.php';
 
-class EventHandler implements Handler
+class ChatApplication
 {
+    /**
+     * @var \WebSocketServer\Core\Server $server The websocket server
+     */
+    private $server;
+
+    /**
+     * Construct the application
+     *
+     * @param \WebSocketServer\Core\Server $server The websocket server
+     */
+    public function __construct(Server $server)
+    {
+        $this->server = $server;
+    }
+
+    /**
+     * Start the application
+     *
+     * @param string $address The listen socket address
+     */
+    public function start($address)
+    {
+        $this->server->on('clientconnect', array($this, 'onClientConnect'));
+
+        $this->server->start($address);
+    }
+
     /**
      * Callback when a client connects
      *
-     * @param \WebSocketServer\Core\Server   $server The websocket server
+     * @param \WebSocketServer\Event\Event   $event  The event
      * @param \WebSocketServer\Socket\Client $client The client
      */
-    public function onConnect(Server $server, Client $client)
+    public function onClientConnect(Event $event, Client $client)
     {
-        $server->sendToAllButClient('User #' . $client->getId() . ' entered the room', $client);
+        $client->on('message',    array($this, 'onMessage')   );
+        $client->on('disconnect', array($this, 'onDisconnect'));
+        $client->on('error',      array($this, 'onError')     );
+
+        $client->getServer()->sendToAllButClient('User #' . $client->getId() . ' entered the room', $client);
     }
 
     /**
      * Callback when a client sends a message
      *
-     * @param \WebSocketServer\Core\Server   $server  The websocket server
-     * @param \WebSocketServer\Socket\Client $client  The client
-     * @param \WebSocketServer\Socket\Frame  $frame The message
+     * @param \WebSocketServer\Event\Event   $event  The event
+     * @param \WebSocketServer\Socket\Client $client The client
+     * @param \WebSocketServer\Socket\Frame  $frame  The message
      */
-    public function onMessage(Server $server, Client $client, Frame $frame)
+    public function onMessage(Event $event, Client $client, Frame $frame)
     {
-        $server->broadcast('#' . $client->getId() . ': ' . $frame->getData());
+        if ($frame->getData() == '!!stop') {
+            $client->getServer()->broadcast('#' . $client->getId() . ' stopped the server');
+            $client->getServer()->stop();
+        } else {
+            $client->getServer()->broadcast('#' . $client->getId() . ': ' . $frame->getData());
+        }
     }
 
     /**
      * Callback when a client disconnects
      *
-     * @param \WebSocketServer\Core\Server   $server The websocket server
+     * @param \WebSocketServer\Event\Event   $event  The event
      * @param \WebSocketServer\Socket\Client $client The client
      */
-    public function onDisconnect(Server $server, Client $client)
+    public function onDisconnect(Event $event, Client $client)
     {
-        $server->sendToAllButClient('User #' . $client->getId() . ' left the room', $client);
+        $client->getServer()->sendToAllButClient('User #' . $client->getId() . ' left the room', $client);
     }
 
     /**
      * Callback when a client suffers an error
      *
-     * @param \WebSocketServer\Core\Server   $server  The websocket server
+     * @param \WebSocketServer\Event\Event   $event   The event
      * @param \WebSocketServer\Socket\Client $client  The client
      * @param string                         $message The error description
      */
-    public function onError(Server $server, Client $client, $message)
+    public function onError(Event $event, Client $client, $message)
     {
-        $server->sendToAllButClient('User #' . $client->getId() . ' fell over', $client);
+        $client->getServer()->sendToAllButClient('User #' . $client->getId() . ' fell over', $client);
+    }
+}
+
+class EchoOutput implements Loggable
+{
+    /**
+     * @var int Logging level
+     */
+    private $level = self::LEVEL_INFO;
+
+    /**
+     * @var array Logging level to string description map
+     */
+    private $levelStrs = [
+        self::LEVEL_ERROR => 'INFO',
+        self::LEVEL_WARN  => 'WARN',
+        self::LEVEL_INFO  => 'INFO',
+        self::LEVEL_DEBUG => 'DEBUG',
+    ];
+
+    /**
+     * Write a message to the log
+     *
+     * @param string $message The message
+     */
+    public function write($message, $level)
+    {
+        if ($level <= $this->level) {
+            $levelStr = $this->levelStrs[$level];
+            echo '[' . $levelStr . '] [' . (new \DateTime())->format('d-m-Y H:i:s') . '] '. $message . "\n";
+        }
+    }
+
+    /**
+     * Set the logging level
+     *
+     * @param int $level New logging level
+     */
+    public function setLevel($level)
+    {
+        $this->level = (int) $level;
+    }
+
+    /**
+     * Get the current logging level
+     *
+     * @return int Current logging level
+     */
+    public function getLevel()
+    {
+        return $this->level;
     }
 }
 
 /**
  * Start the server
  */
-$eventHandler    = new EventHandler();
-$logger          = new EchoOutput();
-$requestFactory  = new RequestFactory();
-$responseFactory = new ResponseFactory();
-$frameFactory    = new FrameFactory();
-$clientFactory   = new ClientFactory($eventHandler, $logger, $requestFactory, $responseFactory, $frameFactory);
-$socketServer    = new Server($eventHandler, $logger, $clientFactory);
+$server = (new ServerFactory)->create(new EchoOutput);
 
-$socketServer->start('0.0.0.0', 1337);
+$application = new ChatApplication($server);
+$application->start('tcp://0.0.0.0:1337');

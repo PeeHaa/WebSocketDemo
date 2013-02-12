@@ -14,10 +14,10 @@
 namespace WebSocketServer\Socket;
 
 use \WebSocketServer\Core\Server,
-    \WebSocketServer\Event\Handler as EventHandler,
-    \WebSocketServer\Log\Loggable,
+    \WebSocketServer\Event\EventFactory,
     \WebSocketServer\Http\RequestFactory,
-    \WebSocketServer\Http\ResponseFactory;
+    \WebSocketServer\Http\ResponseFactory,
+    \WebSocketServer\Log\Loggable;
 
 /**
  * This factory builds client sockets
@@ -29,14 +29,9 @@ use \WebSocketServer\Core\Server,
 class ClientFactory
 {
     /**
-     * @var \WebSocketServer\Event\Handler Event handler
+     * @var \WebSocketServer\Event\EventFactory Event factory
      */
-    private $eventHandler;
-
-    /**
-     * @var \WebSocketServer\Log\Loggable The logger
-     */
-    private $logger;
+    private $eventFactory;
 
     /**
      * @var \WebSocketServer\Http\RequestFactory Factory which http request objects
@@ -54,26 +49,31 @@ class ClientFactory
     private $frameFactory;
 
     /**
+     * @var \WebSocketServer\Log\Loggable The logger
+     */
+    private $logger;
+
+    /**
      * Build the client factory object
      *
-     * @param \WebSocketServer\Event\Handler        $eventHandler    Event handler
-     * @param \WebSocketServer\Log\Loggable         $logger          The logger
+     * @param \WebSocketServer\Event\EventFactory   $eventFactory    Event factory
      * @param \WebSocketServer\Http\RequestFactory  $requestFactory  Factory which http request objects
      * @param \WebSocketServer\Http\ResponseFactory $responseFactory Factory which http response objects
      * @param \WebSocketServer\Socket\FrameFactory  $frameFactory    Frame factory
+     * @param \WebSocketServer\Log\Loggable         $logger          The logger
      */
     public function __construct(
-        EventHandler $eventHandler,
-        Loggable $logger,
+        EventFactory $eventFactory,
         RequestFactory $requestFactory,
         ResponseFactory $responseFactory,
-        FrameFactory $frameFactory
+        FrameFactory $frameFactory,
+        Loggable $logger = null
     ) {
-        $this->eventHandler    = $eventHandler;
-        $this->logger          = $logger;
+        $this->eventFactory    = $eventFactory;
         $this->requestFactory  = $requestFactory;
         $this->responseFactory = $responseFactory;
         $this->frameFactory    = $frameFactory;
+        $this->logger          = $logger;
     }
 
     /**
@@ -89,11 +89,11 @@ class ClientFactory
         return new Client(
             $socket,
             $server,
-            $this->eventHandler,
-            $this->logger,
+            $this->eventFactory,
             $this->requestFactory,
             $this->responseFactory,
-            $this->frameFactory
+            $this->frameFactory,
+            $this->logger
         );
     }
 }
