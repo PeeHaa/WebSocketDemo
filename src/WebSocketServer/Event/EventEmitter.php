@@ -20,7 +20,7 @@ namespace WebSocketServer\Event;
  * @package    Event
  * @author     Chris Wright <https://github.com/DaveRandom>
  */
-interface Emitter
+interface EventEmitter
 {
     /**
      * Register an event handler callback

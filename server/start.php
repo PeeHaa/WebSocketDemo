@@ -45,7 +45,7 @@ class ChatApplication
      */
     public function start($address)
     {
-        $this->server->on('clientconnect', array($this, 'onClientConnect'));
+        $this->server->on('clientconnect', [$this, 'onClientConnect']);
 
         $this->server->start($address);
     }
@@ -58,9 +58,9 @@ class ChatApplication
      */
     public function onClientConnect(Event $event, Client $client)
     {
-        $client->on('message',    array($this, 'onMessage')   );
-        $client->on('disconnect', array($this, 'onDisconnect'));
-        $client->on('error',      array($this, 'onError')     );
+        $client->on('message',    [$this, 'onMessage'   ]);
+        $client->on('disconnect', [$this, 'onDisconnect']);
+        $client->on('error',      [$this, 'onError'     ]);
 
         $client->getServer()->sendToAllButClient('User #' . $client->getId() . ' entered the room', $client);
     }

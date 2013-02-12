@@ -13,7 +13,7 @@
  */
 namespace WebSocketServer\Socket;
 
-use \WebSocketServer\Event\Emitter as EventEmitter,
+use \WebSocketServer\Event\EventEmitter,
     \WebSocketServer\Event\EventFactory,
     \WebSocketServer\Core\Server,
     \WebSocketServer\Http\RequestFactory,
@@ -87,6 +87,11 @@ class Client implements EventEmitter
     private $eventHandlers = [];
 
     /**
+     * @var string Data waiting to be written to socket
+     */
+    private $pendingWriteBuffer = '';
+
+    /**
      * Build the instance of the socket client
      *
      * @param resource                              $socket          The socket the client uses
@@ -130,6 +135,39 @@ class Client implements EventEmitter
     }
 
     /**
+     * Fetch pending data from the wire
+     *
+     * @param int Maximum length of data to fetch
+     * @param int recv() flags
+     * @return string The fetched data
+     */
+    private function readData()
+    {
+        $data = fread($this->socket, 2048);
+
+        if ($data === false) {
+            $this->log('Data read failed', Loggable::LEVEL_ERROR);
+            $this->trigger('error', $this, 'Data read failed');
+
+            $this->disconnect();
+        } else if ($data !== '') {
+            return $data;
+        }
+    }
+
+    /**
+     * Queue frame data to be written to socket and trigger a write cycle
+     *
+     * @param \WebSocketServer\Socket\Frame $frame The frame to be sent
+     */
+    private function writeFrame($frame)
+    {
+        $this->pendingWriteBuffer .= $frame->toRawData();
+
+        $this->processWrite();
+    }
+
+    /**
      * Perform the handshake when a new client tries to connect
      *
      * @param string The request from the client
@@ -152,7 +190,7 @@ class Client implements EventEmitter
 
         $responseString = $response->buildResponse();
 
-        socket_write($this->socket, $responseString, strlen($responseString));
+        fwrite($this->socket, $responseString, strlen($responseString));
 
         $this->handshakeComplete = true;
 
@@ -213,33 +251,50 @@ class Client implements EventEmitter
     }
 
     /**
-     * Fetch pending data from the wire
-     *
-     * @param int Maximum length of data to fetch
-     * @param int recv() flags
-     * @return string The fetched data
+     * Process pending data to be read from socket
      */
-    private function fetchPendingData($length = 2048, $flags = 0)
+    public function processRead()
     {
-        if (@socket_recv($this->socket, $buffer, $length, $flags) > 0) {
-            return $buffer;
+        if (feof($this->socket)) {
+            $this->disconnect();
+        } else {
+            $data = $this->readData();
+
+            if (isset($data)) {
+                if (!$this->handshakeComplete) {
+                    $this->shakeHands($data);
+                } else {
+                    $this->processMessage($data);
+                }
+            }
         }
     }
 
     /**
-     * Process pending data on socket
+     * Process pending data to be read from socket
      */
-    public function processRead()
+    public function processWrite()
     {
-        $data = $this->fetchPendingData();
+        $bytesWritten = fwrite($this->socket, $this->pendingWriteBuffer);
 
-        if (!isset($data)) {
+        if ($bytesWritten === false) {
+            $this->log('Data write failed', Loggable::LEVEL_ERROR);
+            $this->trigger('error', $this, 'Data write failed');
+
             $this->disconnect();
-        } elseif (!$this->handshakeComplete) {
-            $this->shakeHands($data);
-        } else {
-            $this->processMessage($data);
+        } else if ($bytesWritten > 0) {
+            $this->pendingWriteBuffer = (string) substr($this->pendingWriteBuffer, $bytesWritten);
         }
+    }
+
+    /**
+     * Determine whether the client has data waiting to be written
+     *
+     * @return bool Whether the client has data waiting to be written
+     */
+    public function hasPendingWrite()
+    {
+        return (bool) strlen($this->pendingWriteBuffer);
     }
 
     /**
@@ -254,7 +309,7 @@ class Client implements EventEmitter
                 $this->sendClose($closeMessage);
             }
 
-            socket_close($this->socket);
+            fclose($this->socket);
             $this->socket = null;            
 
             $this->trigger('disconnect', $this);
@@ -286,16 +341,6 @@ class Client implements EventEmitter
     }
 
     /**
-     * Get the socket of the client
-     *
-     * @return resource The socket the client uses
-     */
-    public function getSocket()
-    {
-        return $this->socket;
-    }
-
-    /**
      * Get the ID of the client
      *
      * @return int The ID
@@ -316,17 +361,6 @@ class Client implements EventEmitter
     }
 
     /**
-     * Write a frame to the socket
-     *
-     * @param \WebSocketServer\Socket\Frame $frame The frame to be send
-     */
-    private function sendFrame($frame)
-    {
-        $data = $frame->toRawData();
-        socket_write($this->socket, $data, strlen($data));
-    }
-
-    /**
      * Send a text message to a specific client
      *
      * @param string $message The message to be send
@@ -342,7 +376,7 @@ class Client implements EventEmitter
         $this->log('Sending message to client #' . $this->id);
         $this->log('Message data: ' . $message, Loggable::LEVEL_DEBUG);
 
-        $this->sendFrame($frame);
+        $this->writeFrame($frame);
     }
 
     /**
@@ -365,7 +399,7 @@ class Client implements EventEmitter
         $this->log('Sending close frame to client #' . $this->id);
         $this->log('Message data: ' . $message, Loggable::LEVEL_DEBUG);
 
-        $this->sendFrame($frame);
+        $this->writeFrame($frame);
     }
 
     /**

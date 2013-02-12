@@ -13,7 +13,7 @@
  */
 namespace WebSocketServer\Core;
 
-use \WebSocketServer\Event\Emitter as EventEmitter,
+use \WebSocketServer\Event\EventEmitter,
     \WebSocketServer\Event\EventFactory,
     \WebSocketServer\Socket\ClientFactory,
     \WebSocketServer\Socket\Client,
@@ -49,19 +49,19 @@ class Server implements EventEmitter
     private $master;
 
     /**
-     * @var string The base protocol to use for the socket (currently unused, always TCP)
+     * @var string The protocol to bind the socket to
      */
     private $bindProtocol;
 
     /**
-     * @var string The IP address to bind the socket to
+     * @var string The IP address and port to bind the socket to
      */
     private $bindAddress;
 
     /**
-     * @var int The port address to bind the socket to
+     * @var int The \STREAM_CRYPTO_METHOD_* constant used for enabling security
      */
-    private $bindPort;
+    private $securityMethod;
 
     /**
      * @var resource[] List of all the open sockets
@@ -123,20 +123,22 @@ class Server implements EventEmitter
         $this->running = true;
 
         while ($this->running) {
-            $read   = $this->sockets;
-            $write  = null;
-            $except = null;
-            $tv_sec = null;
+            $read = $this->sockets;
+            $write = $this->getPendingWriteSockets();
+            $except = $tv_sec = null;
 
-            socket_select($read, $write, $except, $tv_sec);
+            stream_select($read, $write, $except, $tv_sec);
 
             foreach ($read as $socket) {
                 if ($socket == $this->master) {
                     $this->addClient();
                 } else {
-                    $client = $this->getClientBySocket($socket);
-                    $client->processRead();
+                    $this->clients[(int) $socket]->processRead();
                 }
+            }
+
+            foreach ((array) $write as $socket) {
+                $this->clients[(int) $socket]->processWrite();
             }
         }
 
@@ -156,22 +158,10 @@ class Server implements EventEmitter
      */
     private function createMasterSocket()
     {
-        $socket = socket_create(AF_INET, SOCK_STREAM, SOL_TCP);
+        $socket = stream_socket_server("tcp://{$this->bindAddress}", $errNo, $errStr);
 
         if ($socket === false) {
-            throw new \RuntimeException('Failed to create the master socket.');
-        }
-
-        if (socket_set_option($socket, SOL_SOCKET, SO_REUSEADDR, 1) === false) {
-            throw new \RuntimeException('Failed to set the master socket options.');
-        }
-
-        if (socket_bind($socket, $this->bindAddress, $this->bindPort) === false) {
-            throw new \RuntimeException('Failed to bind the master socket.');
-        }
-
-        if (socket_listen($socket) === false) {
-            throw new \RuntimeException('Failed to listen on master socket.');
+            throw new \RuntimeException('Failed to create the master socket: ' . $errNo . ': ' . $errStr);
         }
 
         $this->sockets[(int) $socket] = $this->master = $socket;
@@ -188,7 +178,7 @@ class Server implements EventEmitter
     private function destroyMasterSocket()
     {
         $id = (int) $this->master;
-        socket_close($this->master);
+        fclose($this->master);
         unset($this->master, $this->sockets[$id]);
 
         $this->trigger('close', $this);
@@ -199,13 +189,32 @@ class Server implements EventEmitter
      */
     private function acceptClientSocket()
     {
-        $socket = socket_accept($this->master);
-        if (!$socket) {
-            $errCode = socket_last_error($this->master);
-            $errStr = socket_strerror($errCode);
-            $this->log('socket_accept() failed: '.$errCode.': '.$errStr, Loggable::LEVEL_WARN);
+        $socket = stream_socket_accept($this->master);
+
+        if ($socket) {
+            stream_set_blocking($socket, 0);
+        } else {
+            $this->log('stream_socket_accept() failed: ' . $this->getLastSocketError($this->master), Loggable::LEVEL_WARN);
         }
+
         return $socket;
+    }
+
+    /**
+     * Get the last error from a socket
+     *
+     * @param resource $stream The stream socket resource
+     */
+    private function getLastSocketError($stream) {
+        $errStr = '-1: Unknown error';
+
+        if (function_exists('socket_import_stream')) {
+            $socket = socket_import_stream($stream);
+            $errCode = socket_last_error($socket);
+            $errStr = $errCode . ': ' . socket_strerror($errCode);
+        }
+
+        return $errStr;
     }
 
     /**
@@ -227,15 +236,21 @@ class Server implements EventEmitter
     }
 
     /**
-     * Get a client based on socket
+     * Get an array of client sockets with data waiting to be written
      *
-     * @param resource $socket The socket of which to find the client
-     *
-     * @return \WebSocketServer\Socket\Client The found client
+     * @return array The array of sockets
      */
-    private function getClientBySocket($socket)
+    private function getPendingWriteSockets()
     {
-        return $this->getClientById((int) $socket);
+        $result = [];
+
+        foreach ($this->sockets as $socket) {
+            if ($socket !== $this->master && $this->clients[(int) $socket]->hasPendingWrite()) {
+                $result[] = $socket;
+            }
+        }
+
+        return $result ?: null;
     }
 
     /**
@@ -253,12 +268,12 @@ class Server implements EventEmitter
         }
 
         $expr = '@
-            ^(?:(?P<prot>tcp|ssl(?:v(?:2|3))?|tls)://)? # Protocol
+            ^(?:(?P<prot>tcp|ssl(?:v(?:2|3|23))?|tls)://)? # Protocol
             (?P<addr>
-                (?:\[?[0-9a-f:]+\]?)                    # IPv6 address
-              | (?:\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})  # IPv4 address
+                (?:\[?[0-9a-f:]+\]?)                       # IPv6 address
+              | (?:\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})     # IPv4 address
             )
-            :(?P<port>\d{1,5})                          # Port 
+            :(?P<port>\d{1,5})                             # Port 
         @ix';
         $match = preg_match($expr, $address, $parts);
 
@@ -281,10 +296,32 @@ class Server implements EventEmitter
         }
         
         $protocol = !empty($parts['prot']) ? strtolower($parts['prot']) : 'tcp';
+        switch ($protocol) {
+            case 'tls':
+                $securityMethod = \STREAM_CRYPTO_METHOD_TLS_SERVER;
+                break;
 
-        $this->bindProtocol = $protocol;
-        $this->bindAddress  = $address;
-        $this->bindPort     = $port;
+            case 'sslv2':
+                $securityMethod = \STREAM_CRYPTO_METHOD_SSLv2_SERVER;
+                break;
+
+            case 'sslv3':
+                $securityMethod = \STREAM_CRYPTO_METHOD_SSLv3_SERVER;
+                break;
+
+            case 'ssl':
+            case 'sslv23':
+                $securityMethod = \STREAM_CRYPTO_METHOD_SSLv23_SERVER;
+                break;
+
+            default:
+                $securityMethod = 0;
+                break;
+        }
+
+        $this->bindProtocol   = $protocol;
+        $this->bindAddress    = $address . ':' . $port;
+        $this->securityMethod = $securityMethod;
     }
 
     /**
@@ -294,8 +331,8 @@ class Server implements EventEmitter
      */
     public function getBindAddress()
     {
-        if (isset($this->bindProtocol, $this->bindAddress, $this->bindPort)) {
-            return "{$this->bindProtocol}://{$this->bindAddress}:$this->bindPort";
+        if (isset($this->bindProtocol, $this->bindAddress)) {
+            return "{$this->bindProtocol}://{$this->bindAddress}";
         }
     }
 
