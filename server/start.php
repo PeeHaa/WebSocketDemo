@@ -43,8 +43,12 @@ class ChatApplication
      *
      * @param string $address The listen socket address
      */
-    public function start($address)
+    public function start($address, $localCert = null)
     {
+        if (isset($localCert)) {
+            $this->server->setSocketContextOption('ssl', 'local_cert', $localCert);
+        }
+
         $this->server->on('clientconnect', [$this, 'onClientConnect']);
 
         $this->server->start($address);
@@ -163,4 +167,6 @@ class EchoOutput implements Loggable
 $server = (new ServerFactory)->create(new EchoOutput);
 
 $application = new ChatApplication($server);
-$application->start('tcp://0.0.0.0:1337');
+
+$application->start('0.0.0.0:1337');
+//$application->start('tls://0.0.0.0:1337', 'localhost.cert');

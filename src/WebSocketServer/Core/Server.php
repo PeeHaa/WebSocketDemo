@@ -64,6 +64,11 @@ class Server implements EventEmitter
     private $securityMethod;
 
     /**
+     * @var resource Stream context for sockets
+     */
+    private $socketContext;
+
+    /**
      * @var resource[] List of all the open sockets
      */
     private $sockets = [];
@@ -95,6 +100,8 @@ class Server implements EventEmitter
         $this->clientFactory = $clientFactory;
         $this->eventFactory  = $eventFactory;
         $this->logger        = $logger;
+
+        $this->socketContext = stream_context_create();
     }
 
     /**
@@ -158,7 +165,9 @@ class Server implements EventEmitter
      */
     private function createMasterSocket()
     {
-        $socket = stream_socket_server("tcp://{$this->bindAddress}", $errNo, $errStr);
+        $address = "tcp://{$this->bindAddress}";
+        $flags = STREAM_SERVER_BIND | STREAM_SERVER_LISTEN;
+        $socket = stream_socket_server($address, $errNo, $errStr, $flags, $this->socketContext);
 
         if ($socket === false) {
             throw new \RuntimeException('Failed to create the master socket: ' . $errNo . ': ' . $errStr);
@@ -166,8 +175,8 @@ class Server implements EventEmitter
 
         $this->sockets[(int) $socket] = $this->master = $socket;
 
-        $this->log('Listening on   : ' . $this->getBindAddress());
-        $this->log('Master socket  : #' . ((int) $socket), Loggable::LEVEL_DEBUG);
+        $this->log('Listening on ' . $this->getBindAddress());
+        $this->log('Master socket: #' . ((int) $socket), Loggable::LEVEL_DEBUG);
 
         $this->trigger('listening', $this);
     }
@@ -193,6 +202,17 @@ class Server implements EventEmitter
 
         if ($socket) {
             stream_set_blocking($socket, 0);
+
+            if ($this->securityMethod) {
+                $this->log('Beginning crypto negotiation');
+
+                if (stream_socket_enable_crypto($socket, true, $this->securityMethod) === false) {
+                    $this->log('stream_socket_enable_crypto() failed: ' . $this->getLastSocketError($socket), Loggable::LEVEL_WARN);
+
+                    @fclose($socket);
+                    $socket = false;
+                }
+            }
         } else {
             $this->log('stream_socket_accept() failed: ' . $this->getLastSocketError($this->master), Loggable::LEVEL_WARN);
         }
@@ -225,7 +245,7 @@ class Server implements EventEmitter
         $socket = $this->acceptClientSocket();
 
         if ($socket) {
-            $client = $this->clientFactory->create($socket, $this);
+            $client = $this->clientFactory->create($socket, $this->securityMethod, $this);
             $this->clients[$client->getId()] = $client;
             $this->sockets[$client->getId()] = $socket;
 
@@ -295,7 +315,16 @@ class Server implements EventEmitter
             throw new \InvalidArgumentException('Port portion of socket address is invalid');
         }
         
-        $protocol = !empty($parts['prot']) ? strtolower($parts['prot']) : 'tcp';
+        if (!empty($parts['prot'])) {
+            $protocol = strtolower($parts['prot']);
+
+            if ($protocol !== 'tcp' && !in_array('openssl', get_loaded_extensions())) {
+                throw new \InvalidArgumentException('Socket protocol wrapper ' . $protocol . ' not available on this system');
+            }
+        } else {
+            $protocol = 'tcp';
+        }
+
         switch ($protocol) {
             case 'tls':
                 $securityMethod = \STREAM_CRYPTO_METHOD_TLS_SERVER;
@@ -334,6 +363,24 @@ class Server implements EventEmitter
         if (isset($this->bindProtocol, $this->bindAddress)) {
             return "{$this->bindProtocol}://{$this->bindAddress}";
         }
+    }
+
+    /**
+     * Set the bind address for the master socket
+     *
+     * @param string $address The bind address
+     *
+     * @throws \LogicException           When attempting to set the address while the server is running
+     * @throws \InvalidArgumentException When $address is not a valid socket address
+     */
+    public function setSocketContextOption($wrapper, $optName, $value)
+    {
+        // This method is a bit of a "make it work" half-job
+        // TODO: make this better
+
+        $target = $this->running ? $this->socket : $this->socketContext;
+
+        stream_context_set_option($target, $wrapper, $optName, $value);
     }
 
     /**

@@ -42,6 +42,11 @@ class Client implements EventEmitter
     private $socket;
 
     /**
+     * @var int The \STREAM_CRYPTO_METHOD_* constant used for enabling security
+     */
+    private $securityMethod;
+
+    /**
      * @var \WebSocketServer\Core\Server The server to which this client belongs
      */
     private $server;
@@ -72,6 +77,11 @@ class Client implements EventEmitter
     private $frameFactory;
 
     /**
+     * @var boolean Whether crypto negotiation on the socket is complete
+     */
+    private $cryptoComplete = false;
+
+    /**
      * @var boolean Whether the client already performed the handshake
      */
     private $handshakeComplete = false;
@@ -95,6 +105,7 @@ class Client implements EventEmitter
      * Build the instance of the socket client
      *
      * @param resource                              $socket          The socket the client uses
+     * @param int                                   $securityMethod  The \STREAM_CRYPTO_METHOD_* constant used for enabling security
      * @param \WebSocketServer\Core\Server          $server          The server to which this client belongs
      * @param \WebSocketServer\Event\EventFactory   $eventHandler    The event handler
      * @param \WebSocketServer\Http\RequestFactory  $requestFactory  Factory which http request objects
@@ -104,6 +115,7 @@ class Client implements EventEmitter
      */
     public function __construct(
         $socket,
+        $securityMethod,
         Server $server,
         EventFactory $eventFactory,
         RequestFactory $requestFactory,
@@ -111,10 +123,11 @@ class Client implements EventEmitter
         FrameFactory $frameFactory,
         Loggable $logger = null
     ) {
-        $this->socket = $socket;
-        $this->id     = (int) $socket;
+        $this->socket         = $socket;
+        $this->id             = (int) $socket;
+        $this->securityMethod = $securityMethod;
+        $this->server         = $server;
 
-        $this->server          = $server;
         $this->eventFactory    = $eventFactory;
         $this->requestFactory  = $requestFactory;
         $this->responseFactory = $responseFactory;
@@ -132,6 +145,21 @@ class Client implements EventEmitter
         if (isset($this->logger)) {
             $this->logger->write($message, $level);
         }
+    }
+
+    /**
+     * Get the last error from the client socket
+     */
+    private function getLastSocketError() {
+        $errStr = '-1: Unknown error';
+
+        if (function_exists('socket_import_stream')) {
+            $socket = socket_import_stream($this->socket);
+            $errCode = socket_last_error($socket);
+            $errStr = $errCode . ': ' . socket_strerror($errCode);
+        }
+
+        return $errStr;
     }
 
     /**
@@ -257,8 +285,24 @@ class Client implements EventEmitter
     {
         if (feof($this->socket)) {
             $this->disconnect();
+        } else if ($this->securityMethod && !$this->cryptoComplete) {
+            $this->log('Continuing crypto negotiation');
+
+            $success = stream_socket_enable_crypto($this->socket, true, $this->securityMethod);
+            if ($success === false) {
+                $this->log('stream_socket_enable_crypto() failed: ' . $this->getLastSocketError(), Loggable::LEVEL_WARN);
+                $this->trigger('error', $this, 'stream_socket_enable_crypto() failed: ' . $this->getLastSocketError());
+
+                $this->disconnect();
+            } else if ($success) {
+                $this->log('Crypto negotiation complete');
+                $this->cryptoComplete = true;
+
+                $this->trigger('cryptoenabled', $this);
+            }
         } else {
             $data = $this->readData();
+            $this->log('Got data from socket: ' . $data, Loggable::LEVEL_DEBUG);
 
             if (isset($data)) {
                 if (!$this->handshakeComplete) {

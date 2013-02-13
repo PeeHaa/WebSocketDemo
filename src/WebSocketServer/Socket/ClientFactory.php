@@ -79,15 +79,17 @@ class ClientFactory
     /**
      * Build the instance of the socket client
      *
-     * @param resource                       $socket The socket the client uses
-     * @param \WebSocketServer\Core\Server   $id     The unique identifier for this client
+     * @param resource                     $socket         The socket the client uses
+     * @param int                          $securityMethod The \STREAM_CRYPTO_METHOD_* constant used for enabling security
+     * @param \WebSocketServer\Core\Server $id             The unique identifier for this client
      *
      * @return \WebSocketServer\Socket\Client New instance of a socket client
      */
-    public function create($socket, Server $server)
+    public function create($socket, $securityMethod, Server $server)
     {
         return new Client(
             $socket,
+            $securityMethod,
             $server,
             $this->eventFactory,
             $this->requestFactory,
