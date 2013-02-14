@@ -15,8 +15,6 @@ namespace WebSocketServer\Socket;
 
 use \WebSocketServer\Core\Server,
     \WebSocketServer\Event\EventFactory,
-    \WebSocketServer\Http\RequestFactory,
-    \WebSocketServer\Http\ResponseFactory,
     \WebSocketServer\Log\Loggable;
 
 /**
@@ -34,14 +32,9 @@ class ClientFactory
     private $eventFactory;
 
     /**
-     * @var \WebSocketServer\Http\RequestFactory Factory which http request objects
+     * @var \WebSocketServer\Socket\HandshakeFactory Handshake factory
      */
-    private $requestFactory;
-
-    /**
-     * @var \WebSocketServer\Http\ResponseFactory Factory which http response objects
-     */
-    private $responseFactory;
+    private $handshakeFactory;
 
     /**
      * @var \WebSocketServer\Socket\FrameFactory Frame factory
@@ -56,24 +49,21 @@ class ClientFactory
     /**
      * Build the client factory object
      *
-     * @param \WebSocketServer\Event\EventFactory   $eventFactory    Event factory
-     * @param \WebSocketServer\Http\RequestFactory  $requestFactory  Factory which http request objects
-     * @param \WebSocketServer\Http\ResponseFactory $responseFactory Factory which http response objects
-     * @param \WebSocketServer\Socket\FrameFactory  $frameFactory    Frame factory
-     * @param \WebSocketServer\Log\Loggable         $logger          The logger
+     * @param \WebSocketServer\Event\EventFactory      $eventFactory     Event factory
+     * @param \WebSocketServer\Socket\HandshakeFactory $handshakeFactory Handshake factory
+     * @param \WebSocketServer\Socket\FrameFactory     $frameFactory     Frame factory
+     * @param \WebSocketServer\Log\Loggable            $logger           The logger
      */
     public function __construct(
         EventFactory $eventFactory,
-        RequestFactory $requestFactory,
-        ResponseFactory $responseFactory,
+        HandshakeFactory $handshakeFactory,
         FrameFactory $frameFactory,
         Loggable $logger = null
     ) {
-        $this->eventFactory    = $eventFactory;
-        $this->requestFactory  = $requestFactory;
-        $this->responseFactory = $responseFactory;
-        $this->frameFactory    = $frameFactory;
-        $this->logger          = $logger;
+        $this->eventFactory     = $eventFactory;
+        $this->handshakeFactory = $handshakeFactory;
+        $this->frameFactory     = $frameFactory;
+        $this->logger           = $logger;
     }
 
     /**
@@ -88,12 +78,9 @@ class ClientFactory
     public function create($socket, $securityMethod, Server $server)
     {
         return new Client(
-            $socket,
-            $securityMethod,
-            $server,
+            $socket, $securityMethod, $server,
             $this->eventFactory,
-            $this->requestFactory,
-            $this->responseFactory,
+            $this->handshakeFactory->create(),
             $this->frameFactory,
             $this->logger
         );

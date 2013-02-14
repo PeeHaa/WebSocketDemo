@@ -16,8 +16,6 @@ namespace WebSocketServer\Socket;
 use \WebSocketServer\Event\EventEmitter,
     \WebSocketServer\Event\EventFactory,
     \WebSocketServer\Core\Server,
-    \WebSocketServer\Http\RequestFactory,
-    \WebSocketServer\Http\ResponseFactory,
     \WebSocketServer\Log\Loggable;
 
 /**
@@ -29,8 +27,6 @@ use \WebSocketServer\Event\EventEmitter,
  */
 class Client implements EventEmitter
 {
-    const SIGNING_KEY = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
-
     /**
      * @var int The unique identifier for this client, derived from the socket resource
      */
@@ -62,14 +58,9 @@ class Client implements EventEmitter
     private $logger;
 
     /**
-     * @var \WebSocketServer\Http\RequestFactory Factory which http request objects
+     * @var \WebSocketServer\Socket\Handshake Handshake object
      */
-    private $requestFactory;
-
-    /**
-     * @var \WebSocketServer\Http\ResponseFactory Factory which http response objects
-     */
-    private $responseFactory;
+    private $handshake;
 
     /**
      * @var \WebSocketServer\Socket\FrameFactory Frame factory
@@ -80,11 +71,6 @@ class Client implements EventEmitter
      * @var boolean Whether crypto negotiation on the socket is complete
      */
     private $cryptoComplete = false;
-
-    /**
-     * @var boolean Whether the client already performed the handshake
-     */
-    private $handshakeComplete = false;
 
     /**
      * @var array A temporary store of an outstanding frame
@@ -104,22 +90,20 @@ class Client implements EventEmitter
     /**
      * Build the instance of the socket client
      *
-     * @param resource                              $socket          The socket the client uses
-     * @param int                                   $securityMethod  The \STREAM_CRYPTO_METHOD_* constant used for enabling security
-     * @param \WebSocketServer\Core\Server          $server          The server to which this client belongs
-     * @param \WebSocketServer\Event\EventFactory   $eventHandler    The event handler
-     * @param \WebSocketServer\Http\RequestFactory  $requestFactory  Factory which http request objects
-     * @param \WebSocketServer\Http\ResponseFactory $responseFactory Factory which http response objects
-     * @param \WebSocketServer\Socket\FrameFactory  $frameFactory    Frame factory
-     * @param \WebSocketServer\Log\Loggable         $logger          The logger
+     * @param resource                             $socket         The socket the client uses
+     * @param int                                  $securityMethod The \STREAM_CRYPTO_METHOD_* constant used for enabling security
+     * @param \WebSocketServer\Core\Server         $server         The server to which this client belongs
+     * @param \WebSocketServer\Event\EventFactory  $eventHandler   The event handler
+     * @param \WebSocketServer\Socket\Handshake    $handshake      Handshake object
+     * @param \WebSocketServer\Socket\FrameFactory $frameFactory   Frame factory
+     * @param \WebSocketServer\Log\Loggable        $logger         The logger
      */
     public function __construct(
         $socket,
         $securityMethod,
         Server $server,
         EventFactory $eventFactory,
-        RequestFactory $requestFactory,
-        ResponseFactory $responseFactory,
+        Handshake $handshake,
         FrameFactory $frameFactory,
         Loggable $logger = null
     ) {
@@ -128,11 +112,10 @@ class Client implements EventEmitter
         $this->securityMethod = $securityMethod;
         $this->server         = $server;
 
-        $this->eventFactory    = $eventFactory;
-        $this->requestFactory  = $requestFactory;
-        $this->responseFactory = $responseFactory;
-        $this->frameFactory    = $frameFactory;
-        $this->logger          = $logger;
+        $this->eventFactory = $eventFactory;
+        $this->handshake    = $handshake;
+        $this->frameFactory = $frameFactory;
+        $this->logger       = $logger;
     }
 
     /**
@@ -171,14 +154,31 @@ class Client implements EventEmitter
      */
     private function readData()
     {
-        $data = fread($this->socket, 2048);
+        $data = '';
+        $read = [$this->socket];
+        $write = $except = null;
 
-        if ($data === false) {
-            $this->log('Data read failed', Loggable::LEVEL_ERROR);
-            $this->trigger('error', $this, 'Data read failed');
+        /* Note by DaveRandom:
+         * This is a little odd. When I tested on Fedora, fread() was only returning
+         * 1 byte at a time. Other systems (including another Fedora box) didn't do
+         * this. This loop fixes the issue, and shouldn't negatively impact performance
+         * too badly, as sane systems will only iterate once, all parsers are buffered.
+         */
+        while (stream_select($read, $write, $except, 0)) {
+            $bytes = fread($this->socket, 8192);
 
-            $this->disconnect();
-        } else if ($data !== '') {
+            if ($bytes === false) {
+                $this->log('Data read failed: ' . $this->getLastSocketError(), Loggable::LEVEL_ERROR);
+                $this->trigger('error', $this, 'Data read failed');
+
+                $this->disconnect();
+                return;
+            }
+
+            $data .= $bytes;
+        }
+
+        if ($data !== '') {
             return $data;
         }
     }
@@ -205,37 +205,16 @@ class Client implements EventEmitter
         $this->log('Starting handshake process');
         $this->log("Client data: \n" . $buffer, Loggable::LEVEL_DEBUG);
 
-        $request  = $this->requestFactory->create($buffer);
-        $request->parse();
-        $response = $this->responseFactory->create();
+        $response = $this->handshake->doHandshake($buffer, $this->securityMethod);
+        if ($response) {
 
-        $response->addHeader('HTTP/1.1 101 WebSocket Protocol Handshake');
-        $response->addHeader('Upgrade', 'WebSocket');
-        $response->addHeader('Connection', 'Upgrade');
-        $response->addHeader('Sec-WebSocket-Origin', $request->getOrigin());
-        $response->addHeader('Sec-WebSocket-Location', 'ws://' . $request->getHost() . $request->getResource());
-        $response->addHeader('Sec-WebSocket-Accept', $this->getSignature($request->getKey()));
+            $this->pendingWriteBuffer .= $response;
+            $this->processWrite();
 
-        $responseString = $response->buildResponse();
-
-        fwrite($this->socket, $responseString, strlen($responseString));
-
-        $this->handshakeComplete = true;
-
-        $this->log('Shaking hands with client');
-        $this->log("Data sent to client: \n" . $responseString, Loggable::LEVEL_DEBUG);
-    }
-
-    /**
-     * Generate a signature to be used when shaking hands with the client
-     *
-     * @param string $key The key used to sign the response
-     *
-     * @return string The signture
-     */
-    private function getSignature($key)
-    {
-        return base64_encode(sha1($key . self::SIGNING_KEY, true));
+            $this->log('Handshake process complete');
+            $this->log("Data sent to client: \n" . $response, Loggable::LEVEL_DEBUG);
+            $this->trigger('handshakecomplete', $this);
+        }
     }
 
     /**
@@ -305,7 +284,7 @@ class Client implements EventEmitter
             $this->log('Got data from socket: ' . $data, Loggable::LEVEL_DEBUG);
 
             if (isset($data)) {
-                if (!$this->handshakeComplete) {
+                if (!$this->handshake->isComplete()) {
                     $this->shakeHands($data);
                 } else {
                     $this->processMessage($data);
@@ -401,7 +380,7 @@ class Client implements EventEmitter
      */
     public function didHandshake()
     {
-        return $this->handshakeComplete;
+        return $this->handshake->isComplete();
     }
 
     /**

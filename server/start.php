@@ -168,5 +168,5 @@ $server = (new ServerFactory)->create(new EchoOutput);
 
 $application = new ChatApplication($server);
 
-$application->start('0.0.0.0:1337');
-//$application->start('tls://0.0.0.0:1337', 'localhost.cert');
+//$application->start('0.0.0.0:1337');
+$application->start('tls://0.0.0.0:1337', 'localhost.cert');

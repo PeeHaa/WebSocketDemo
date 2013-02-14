@@ -16,6 +16,7 @@ namespace WebSocketServer\Core;
 use \WebSocketServer\Event\Emitter as EventEmitter,
     \WebSocketServer\Event\EventFactory,
     \WebSocketServer\Socket\ClientFactory,
+    \WebSocketServer\Socket\HandshakeFactory,
     \WebSocketServer\Socket\FrameFactory,
     \WebSocketServer\Http\RequestFactory,
     \WebSocketServer\Http\ResponseFactory,
@@ -42,8 +43,10 @@ class ServerFactory
             $eventFactory,
             new ClientFactory(
                 $eventFactory,
-                new RequestFactory,
-                new ResponseFactory,
+                new HandshakeFactory(
+                    new RequestFactory,
+                    new ResponseFactory
+                ),
                 new FrameFactory,
                 $logger
             ),
