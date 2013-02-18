@@ -1,0 +1,226 @@
+* {
+    margin: 0;
+    padding: 0;
+}
+
+html, body {
+    background: #ececec;
+    height: 100%;
+}
+
+body.loading {
+    opacity: 0.2;
+}
+
+#body {
+    margin: 0 auto;
+    min-width: 300px;
+    min-height: 100%;
+    height: 100%;
+}
+
+#body[id] {
+    height: auto;
+    overflow: hidden;
+}
+
+.loader {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+}
+
+.scrollbar {
+    background: #f2f2f2;
+    width: 10px;
+    border-top: 1px solid #dbdbdb;
+    border-left: 1px solid #dbdbdb;
+    padding: 1px 2px;
+    position: absolute;
+    right: 205px;
+    top: 0;
+    bottom: 105px;
+    border-radius: 5px;
+}
+
+.scrollbar .handle {
+    background: #d9d9d9;
+    border-top: 1px solid #c7c7c7;
+    border-left: 1px solid #bdbdbd;
+    border-right: 1px solid #bbbbbb;
+    border-bottom: 1px solid #adadad;
+    width: 8px;
+    height: 100%;
+    border-radius: 5px;
+    position: relative;
+}
+
+#connect {
+    position: relative;
+    width: 420px;
+    margin: 100px auto 0;
+}
+
+#connect input, select {
+    border-radius: 5px;
+    outline: none;
+    border: 0;
+}
+
+#connect input {
+    width: 208px;
+    padding: 6px;
+}
+
+#connect input[type=submit] {
+    width: 220px;
+}
+
+#connect select {
+    width: 220px;
+    padding: 5px;
+}
+
+th {
+    padding: 5px 50px 5px 0;
+    text-align: right;
+}
+
+#conversation {
+    padding: 5px;
+    margin-right: 200px;
+    overflow: hidden;
+}
+
+#conversation article {
+    border-bottom: 1px solid white;
+    font-family: 'Lato', sans-serif;
+    font-size: 14px;
+    padding: 10px 0;
+    margin-right: 10px;
+}
+
+#conversation article .user-info {
+    float: left;
+    max-width: 100px;
+    overflow: hidden;
+    max-height: 17px;
+    position: relative;
+}
+
+#conversation article .user-info p {
+    font-weight: bold;
+    margin-left: 20px;
+    word-break: break-all;
+}
+
+#conversation article .message {
+    margin-left: 100px;
+    margin-right: 10px;
+}
+
+#conversation article .avatar {
+    margin-right: 10px;
+    top: 2px;
+    position: absolute;
+}
+
+#user-list {
+    width: 200px;
+    float: right;
+    background: #292929;
+    padding-bottom: 32000px;
+    margin-bottom: -32000px;
+}
+
+#user-list ul {
+    list-style: none;
+}
+
+#user-list li {
+    background: #ececec;
+    margin: 5px;
+    padding: 5px;
+    border-radius: 5px;
+    position: relative;
+}
+
+#user-list li img.avatar {
+    position: relative;
+    margin-right: 10px;
+    width: 15px;
+    height: 15px;
+}
+
+#user-list li p {
+    display: inline-block;
+    overflow: hidden;
+    height: 18px;
+    max-width: 130px;
+    word-break: break-all;
+    padding-top: 2px;
+}
+
+#user-list li img.status {
+    position: absolute;
+    top: 9px;
+    right: 10px;
+}
+
+#fix {
+    height: 0;
+    clear: both;
+}
+
+#send {
+    height: 105px;
+    position: absolute;
+    bottom: 0;
+    width: 83%;
+}
+
+footer {
+    margin: 0 auto;
+    min-width: 300px;
+    min-height: 95px;
+    height: 95px;
+    margin-top: -95px;
+}
+
+footer[id] {
+    z-index: 100;
+    position: relative;
+}
+
+footer .message {
+    margin-right: 220px;
+}
+
+footer textarea {
+    width: 100%;
+    border: 0;
+    border-radius: 5px;
+    min-height: 80px;
+    outline: none;
+    margin-left: 5px;
+    padding: 5px;
+    font-family: 'Lato', sans-serif;
+}
+
+footer .submit {
+    width: 200px;
+    float: right;
+    background: #292929;
+}
+
+footer input[type=submit] {
+    border-top-right-radius: 5px;
+    border-bottom-right-radius: 5px;
+    outline: none;
+    border: 0;
+    height: 50px;
+    vertical-align: bottom;
+    width: 85px;
+    margin-bottom: 5px;
+    background: #ececec;
+}
