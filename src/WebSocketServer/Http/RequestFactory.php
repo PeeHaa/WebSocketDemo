@@ -13,9 +13,6 @@
  */
 namespace WebSocketServer\Http;
 
-use WebSocketServer\Http\Parser\Request as RequestParser,
-    WebSocketServer\Http\Request;
-
 /**
  * This factory builds HTTP request data objects
  *
@@ -28,12 +25,10 @@ class RequestFactory
     /**
      * Build a request
      *
-     * @param string $requestData The request data
-     *
      * @return WebSocketServer\Http\Request The request object
      */
-    public function create($requestData)
+    public function create()
     {
-        return new Request(new RequestParser($requestData));
+        return new Request;
     }
 }

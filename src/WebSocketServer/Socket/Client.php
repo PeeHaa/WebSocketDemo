@@ -63,6 +63,11 @@ class Client implements EventEmitter
     private $handshake;
 
     /**
+     * @var \WebSocketServer\Socket\Buffer Buffer object
+     */
+    private $buffer;
+
+    /**
      * @var \WebSocketServer\Socket\FrameFactory Frame factory
      */
     private $frameFactory;
@@ -95,6 +100,7 @@ class Client implements EventEmitter
      * @param \WebSocketServer\Core\Server         $server         The server to which this client belongs
      * @param \WebSocketServer\Event\EventFactory  $eventHandler   The event handler
      * @param \WebSocketServer\Socket\Handshake    $handshake      Handshake object
+     * @param \WebSocketServer\Socket\Buffer       $buffer         Buffer object
      * @param \WebSocketServer\Socket\FrameFactory $frameFactory   Frame factory
      * @param \WebSocketServer\Log\Loggable        $logger         The logger
      */
@@ -104,6 +110,7 @@ class Client implements EventEmitter
         Server $server,
         EventFactory $eventFactory,
         Handshake $handshake,
+        Buffer $buffer,
         FrameFactory $frameFactory,
         Loggable $logger = null
     ) {
@@ -114,6 +121,7 @@ class Client implements EventEmitter
 
         $this->eventFactory = $eventFactory;
         $this->handshake    = $handshake;
+        $this->buffer       = $buffer;
         $this->frameFactory = $frameFactory;
         $this->logger       = $logger;
     }
@@ -152,7 +160,7 @@ class Client implements EventEmitter
      * @param int recv() flags
      * @return string The fetched data
      */
-    private function readData()
+    private function readDataIntoBuffer()
     {
         $data = '';
         $read = [$this->socket];
@@ -164,7 +172,7 @@ class Client implements EventEmitter
          * this. This loop fixes the issue, and shouldn't negatively impact performance
          * too badly, as sane systems will only iterate once, all parsers are buffered.
          */
-        while (stream_select($read, $write, $except, 0)) {
+        do {
             $bytes = fread($this->socket, 8192);
 
             if ($bytes === false) {
@@ -176,11 +184,10 @@ class Client implements EventEmitter
             }
 
             $data .= $bytes;
-        }
+        } while (stream_select($read, $write, $except, 0));
 
-        if ($data !== '') {
-            return $data;
-        }
+        $this->log('Got data from socket: ' . $data, Loggable::LEVEL_DEBUG);
+        $this->buffer->write($data);
     }
 
     /**
@@ -197,16 +204,30 @@ class Client implements EventEmitter
 
     /**
      * Perform the handshake when a new client tries to connect
-     *
-     * @param string The request from the client
      */
-    private function shakeHands($buffer)
+    private function shakeHands()
     {
-        $this->log('Starting handshake process');
-        $this->log("Client data: \n" . $buffer, Loggable::LEVEL_DEBUG);
+        $this->log('Shaking hands');
+        $this->log("Buffer contents:\n" . $this->buffer, Loggable::LEVEL_DEBUG);
 
-        $response = $this->handshake->doHandshake($buffer, $this->securityMethod);
-        if ($response) {
+        try {
+            $success = $this->handshake->readClientHandshake($this->buffer);
+        } catch (\RangeException $e) {
+            $this->log('Handshake failed: ' . $e->getMessage());
+            $this->trigger('error', $e->getMessage());
+
+            $this->disconnect();
+            return;
+        }
+
+        if ($success) {
+            if (!$this->trigger('handshake', $this, $this->handshake)) {
+                $this->log('Handshake rejected by event handler');
+
+                $this->disconnect();
+            }
+
+            $response = $this->handshake->getServerHandshake();
 
             $this->pendingWriteBuffer .= $response;
             $this->processWrite();
@@ -219,15 +240,13 @@ class Client implements EventEmitter
 
     /**
      * Process incoming message
-     *
-     * @param string The message
      */
-    private function processMessage($message)
+    private function processMessage()
     {
         try {
             try {
                 $frame = isset($this->pendingDataFrame) ? $this->pendingDataFrame : $this->frameFactory->create();
-                $frame->fromRawData($message);
+                $frame->fromRawData($buffer);
 
                 if (!$frame->isFin()) {
                     $this->pendingDataFrame = $frame;
@@ -236,7 +255,7 @@ class Client implements EventEmitter
                 }
             } catch (NewControlFrameException $e) {
                 $frame = $this->frameFactory->create();
-                $frame->fromRawData($message);
+                $frame->fromRawData($buffer);
             }
 
             $this->trigger('frame', $this, $frame);
@@ -280,15 +299,12 @@ class Client implements EventEmitter
                 $this->trigger('cryptoenabled', $this);
             }
         } else {
-            $data = $this->readData();
-            $this->log('Got data from socket: ' . $data, Loggable::LEVEL_DEBUG);
+            $this->readDataIntoBuffer();
 
-            if (isset($data)) {
-                if (!$this->handshake->isComplete()) {
-                    $this->shakeHands($data);
-                } else {
-                    $this->processMessage($data);
-                }
+            if (!$this->handshake->isComplete()) {
+                $this->shakeHands();
+            } else {
+                $this->processMessage();
             }
         }
     }
@@ -465,9 +481,13 @@ class Client implements EventEmitter
      *
      * @param string $eventName The event name
      * @param mixed  $arg,...   Arguments passed to the event handler
+     *
+     * @return bool The success state returned by the event callbacks
      */
     public function trigger($eventName)
     {
+        $result = true;
+
         if (isset($this->eventHandlers[$eventName])) {
             $args = func_get_args();
             array_shift($args);
@@ -476,12 +496,15 @@ class Client implements EventEmitter
             array_unshift($args, $event);
 
             foreach ($this->eventHandlers[$eventName] as $handler) {
-                $result = call_user_func_array($handler, $args);
+                $handlerResult = call_user_func_array($handler, $args);
 
-                if ($result === false || $event->isContinuationStopped()) {
+                if ($handlerResult === false || $event->isContinuationStopped()) {
+                    $result = false;
                     break;
                 }
             }
         }
+
+        return $result;
     }
 }

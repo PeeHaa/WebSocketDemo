@@ -23,15 +23,17 @@ namespace WebSocketServer\Socket;
 class FrameFactory
 {
     /**
-     * Build the instance of the socket client
+     * Build the instance of Frame
      *
-     * @param resource                       $socket The socket the client uses
-     * @param \WebSocketServer\Core\Server   $id     The unique identifier for this client
+     * @param bool   $fin    Whether the frame has the FIN bit set
+     * @param int    $rsv    The RSV bitfield for the frame
+     * @param int    $opcode The opcode for the frame
+     * @param string $data   The frame data payload
      *
-     * @return \WebSocketServer\Socket\Client New instance of a socket client
+     * @return \WebSocketServer\Socket\Frame New instance of a socket client
      */
-    public function create()
+    public function create($fin, $rsv, $opcode, $data)
     {
-        return new Frame();
+        return new Frame($fin, $rsv, $opcode, $data);
     }
 }

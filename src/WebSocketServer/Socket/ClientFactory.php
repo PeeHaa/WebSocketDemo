@@ -37,6 +37,11 @@ class ClientFactory
     private $handshakeFactory;
 
     /**
+     * @var \WebSocketServer\Socket\DataBufferFactory Buffer factory
+     */
+    private $bufferFactory;
+
+    /**
      * @var \WebSocketServer\Socket\FrameFactory Frame factory
      */
     private $frameFactory;
@@ -49,19 +54,22 @@ class ClientFactory
     /**
      * Build the client factory object
      *
-     * @param \WebSocketServer\Event\EventFactory      $eventFactory     Event factory
-     * @param \WebSocketServer\Socket\HandshakeFactory $handshakeFactory Handshake factory
-     * @param \WebSocketServer\Socket\FrameFactory     $frameFactory     Frame factory
-     * @param \WebSocketServer\Log\Loggable            $logger           The logger
+     * @param \WebSocketServer\Event\EventFactory       $eventFactory     Event factory
+     * @param \WebSocketServer\Socket\HandshakeFactory  $handshakeFactory Handshake factory
+     * @param \WebSocketServer\Socket\DataBufferFactory $bufferFactory    Buffer factory
+     * @param \WebSocketServer\Socket\FrameFactory      $frameFactory     Frame factory
+     * @param \WebSocketServer\Log\Loggable             $logger           The logger
      */
     public function __construct(
         EventFactory $eventFactory,
         HandshakeFactory $handshakeFactory,
+        DataBufferFactory $bufferFactory,
         FrameFactory $frameFactory,
         Loggable $logger = null
     ) {
         $this->eventFactory     = $eventFactory;
         $this->handshakeFactory = $handshakeFactory;
+        $this->bufferFactory    = $bufferFactory;
         $this->frameFactory     = $frameFactory;
         $this->logger           = $logger;
     }
@@ -81,6 +89,7 @@ class ClientFactory
             $socket, $securityMethod, $server,
             $this->eventFactory,
             $this->handshakeFactory->create(),
+            $this->bufferFactory->create(),
             $this->frameFactory,
             $this->logger
         );

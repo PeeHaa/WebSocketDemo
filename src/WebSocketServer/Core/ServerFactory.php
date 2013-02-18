@@ -17,6 +17,7 @@ use \WebSocketServer\Event\Emitter as EventEmitter,
     \WebSocketServer\Event\EventFactory,
     \WebSocketServer\Socket\ClientFactory,
     \WebSocketServer\Socket\HandshakeFactory,
+    \WebSocketServer\Socket\DataBufferFactory,
     \WebSocketServer\Socket\FrameFactory,
     \WebSocketServer\Http\RequestFactory,
     \WebSocketServer\Http\ResponseFactory,
@@ -47,6 +48,7 @@ class ServerFactory
                     new RequestFactory,
                     new ResponseFactory
                 ),
+                new DataBufferFactory,
                 new FrameFactory,
                 $logger
             ),

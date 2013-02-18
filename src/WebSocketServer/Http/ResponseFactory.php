@@ -13,8 +13,6 @@
  */
 namespace WebSocketServer\Http;
 
-use WebSocketServer\Http\Response;
-
 /**
  * This factory builds HTTP response data objects
  *
@@ -31,6 +29,6 @@ class ResponseFactory
      */
     public function create()
     {
-        return new Response();
+        return new Response;
     }
 }

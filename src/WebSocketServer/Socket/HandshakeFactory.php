@@ -54,6 +54,9 @@ class HandshakeFactory
      */
     public function create()
     {
-        return new Handshake($this->requestFactory, $this->responseFactory);
+        return new Handshake(
+            $this->requestFactory->create(),
+            $this->responseFactory->create()
+        );
     }
 }

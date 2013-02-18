@@ -14,8 +14,6 @@
  */
 namespace WebSocketServer\Http;
 
-use WebSocketServer\Http\Parser\Parsable;
-
 /**
  * This class represents a websocket request. Meaning a request made from the client to the server.
  *
@@ -26,100 +24,132 @@ use WebSocketServer\Http\Parser\Parsable;
 class Request
 {
     /**
-     * @var \WebSocketServer\Http\Parser\Parsable An HTTP request parser
+     * @var string The method of the request
      */
-    private $parser;
+    private $method;
 
     /**
-     * @var string The resource
+     * @var string The URI of the request
      */
-    private $resource;
+    private $uri;
 
     /**
-     * @var string The host header
+     * @var string The HTTP version of the request
      */
-    private $host;
+    private $httpVersion;
 
     /**
-     * @var string The origin header
+     * @var array Request headers
      */
-    private $origin;
+    private $headers = [];
 
     /**
-     * @var string The key header
+     * @var array Request cookies
      */
-    private $key;
+    private $cookies = [];
 
     /**
-     * Build the request object
-     *
-     * @param \WebSocketServer\Http\Parser\Parsable $parser An HTTP request parser
+     * @var array Request URL parameters
      */
-    public function __construct(Parsable $parser)
-    {
-        $this->parser = $parser;
-    }
+    private $urlParams = [];
 
     /**
      * Parse the request and fill the properties
+     *
+     * @param string $headers The headers of the handshake HTTP request
      */
-    public function parse()
+    public function parseString($headers)
     {
-        $this->parser->parse();
-
-        $this->resource = $this->parser->getResource();
-
-        $headers = $this->parser->getHeaders();
-
-        $requiredHeaders = ['host', 'origin', 'sec-websocket-key'];
-        foreach ($requiredHeaders as $requiredHeader) {
-            if (!array_key_exists($requiredHeader, $headers)) {
-                throw new \RangeException('Invalid request. Missing required header (`' . $requiredHeader . '`).');
-            }
+        $expr = '%
+            ^
+            ([A-Z]+)\s+(\S+)\s+HTTP/(\d+\.\d+)\r?\n
+            ((?:.+?\r?\n)*?)
+            \r?\n
+            $
+        %ix';
+        if (!preg_match($expr, $headers, $matches)) {
+            throw new \InvalidArgumentException('Input is not a valid HTTP request');
         }
 
-        $this->host   = $headers['host'];
-        $this->origin = $headers['origin'];
-        $this->key    = $headers['sec-websocket-key'];
+        $this->method = strtoupper($matches[1]);
+        $this->httpVersion = $matches[3];
+
+        $parts = explode('?', $matches[2], 2);
+        $this->uri = $parts[0];
+        if (isset($parts[1])) {
+            parse_str($parts[1], $this->urlParams);
+        }
+
+        $expr = '%([a-z\-]+)(?::(.*?)(?:(?:\r?\n(?![ \t]))|$))?%is';
+        $headers = trim($matches[4]);
+
+        if (preg_match_all($expr, $headers, $matches)) {
+            foreach ($matches[1] as $i => $name) {
+                $name = strtolower($name);
+                $value = preg_replace('/\r?\n\s+/', ' ', trim($matches[2][$i]));
+
+                if (!isset($this->headers[$name])) {
+                    $this->headers[$name] = [];
+                }
+                $this->headers[$name][] = $value;
+            }
+
+            foreach ((array) $this->headers['cookie'] as $cookies) {
+                if (preg_match_all('/(?:;\s*)?([^=]+)=([^;]+)/', $cookies, $matches)) {
+                    foreach ($matches[1] as $i => $name) {
+                        $this->cookies[$name] = $matches[2][$i];
+                    }
+                }
+            }
+        }
     }
 
     /**
-     * Get the resource of the request
-     *
-     * @return string The resource of the request
+     * Get the method of the request
      */
-    public function getResource()
-    {
-        return $this->resource;
+    public function getMethod() {
+        return $this->method;
     }
 
     /**
-     * Get the host header of the request
-     *
-     * @return string The host header of the request
+     * Get the URI of the request
      */
-    public function getHost()
-    {
-        return $this->host;
+    public function getUri() {
+        return $this->uri;
     }
 
     /**
-     * Get the origin header of the request
-     *
-     * @return string The origin header of the request
+     * Get the HTTP version of the request
      */
-    public function getOrigin()
-    {
-        return $this->origin;
+    public function getHttpVersion() {
+        return $this->httpVersion;
     }
 
     /**
-     * Get the key header of the request
+     * Get a header by name
      *
-     * @return string The key header of the request
+     * @param string $name The name of the header
      */
-    public function getKey()
-    {
-        return $this->key;
+    public function getHeader($name) {
+        $name = strtolower($name);
+        return isset($this->headers[$name]) ? $this->headers[$name] : null;
+    }
+
+    /**
+     * Get a cookie by name
+     *
+     * @param string $name The name of the cookie
+     */
+    public function getCookie($name) {
+        return isset($this->cookies[$name]) ? $this->cookies[$name] : null;
+    }
+
+    /**
+     * Get a url parameter by name
+     *
+     * @param string $name The name of the url parameter
+     */
+    public function getUrlParameter($name) {
+        return isset($this->urlParams[$name]) ? $this->urlParams[$name] : null;
     }
 }

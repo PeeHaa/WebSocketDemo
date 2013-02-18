@@ -539,9 +539,13 @@ class Server implements EventEmitter
      *
      * @param string $eventName The event name
      * @param mixed  $arg,...   Arguments passed to the event handler
+     *
+     * @return bool The success state returned by the event callbacks
      */
     public function trigger($eventName)
     {
+        $result = true;
+
         if (isset($this->eventHandlers[$eventName])) {
             $args = func_get_args();
             array_shift($args);
@@ -550,12 +554,15 @@ class Server implements EventEmitter
             array_unshift($args, $event);
 
             foreach ($this->eventHandlers[$eventName] as $handler) {
-                $result = call_user_func_array($handler, $args);
+                $handlerResult = call_user_func_array($handler, $args);
 
-                if ($result === false || $event->isContinuationStopped()) {
+                if ($handlerResult === false || $event->isContinuationStopped()) {
+                    $result = false;
                     break;
                 }
             }
         }
+
+        return $result;
     }
 }

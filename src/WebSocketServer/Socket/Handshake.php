@@ -1,6 +1,6 @@
 <?php
 /**
- * This class represents a websocket frame
+ * This class represents a websocket client handshake
  *
  * PHP version 5.4
  *
@@ -13,11 +13,11 @@
  */
 namespace WebSocketServer\Socket;
 
-use \WebSocketServer\Http\RequestFactory,
-    \WebSocketServer\Http\ResponseFactory;
+use \WebSocketServer\Http\Request,
+    \WebSocketServer\Http\Response;
 
 /**
- * This class represents a websocket frame
+ * This class represents a websocket client handshake
  *
  * @category   WebSocketServer
  * @package    Socket
@@ -25,22 +25,17 @@ use \WebSocketServer\Http\RequestFactory,
  */
 class Handshake
 {
-    const SIGNING_KEY = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'; // TODO: allow this value to be injected
+    const SIGNING_KEY = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'; // TODO: allow this value to be injected?
 
     /**
-     * @var \WebSocketServer\Http\RequestFactory Factory which builds http request objects
+     * @var \WebSocketServer\Http\Request HTTP request object
      */
-    private $requestFactory;
+    private $request;
 
     /**
-     * @var \WebSocketServer\Http\ResponseFactory Factory which builds http response objects
+     * @var \WebSocketServer\Http\Response HTTP response object
      */
-    private $responseFactory;
-
-    /**
-     * @var \WebSocketServer\Http\ResponseFactory Factory which builds http response objects
-     */
-    private $readBuffer = '';
+    private $response;
 
     /**
      * @var bool Whether the handshake is complete
@@ -48,15 +43,19 @@ class Handshake
     private $complete;
 
     /**
-     * Build the client factory object
+     * Build the handshake object
      *
-     * @param \WebSocketServer\Http\RequestFactory  $requestFactory  Factory which http request objects
-     * @param \WebSocketServer\Http\ResponseFactory $responseFactory Factory which http response objects
+     * @param \WebSocketServer\Http\Request  $request  HTTP request object
+     * @param \WebSocketServer\Http\Response $response HTTP response object
      */
-    public function __construct(RequestFactory $requestFactory, ResponseFactory $responseFactory)
+    public function __construct(Request $request, Response $response)
     {
-        $this->requestFactory  = $requestFactory;
-        $this->responseFactory = $responseFactory;
+        $this->request  = $request;
+        $this->response = $response;
+
+        $response->setResponseLine('HTTP/1.1 101 WebSocket Protocol Handshake');
+        $response->addHeader('Upgrade', 'WebSocket');
+        $response->addHeader('Connection', 'Upgrade');
     }
 
     /**
@@ -66,7 +65,7 @@ class Handshake
      *
      * @return string The signture
      */
-    private function getSignature($key)
+    private function buildSignature($key)
     {
         return base64_encode(sha1($key . self::SIGNING_KEY, true));
     }
@@ -74,39 +73,69 @@ class Handshake
     /**
      * Build the instance of the handshake
      *
-     * @return \WebSocketServer\Socket\Handshake New instance of a socket client
+     * @return bool Whether a complete handshake request has been received
      */
-    public function doHandshake($buffer, $securityMethod)
+    public function readClientHandshake(Buffer $buffer)
     {
-        $this->readBuffer .= $buffer;
-
-        if (preg_match('/\r?\n\r?\n/', $this->readBuffer)) {
-            $request  = $this->requestFactory->create($this->readBuffer);
-            $request->parse();
-
-            $protocol = $securityMethod ? 'wss' : 'ws';
-
-            $response = $this->responseFactory->create();
-            $response->addHeader('HTTP/1.1 101 WebSocket Protocol Handshake');
-            $response->addHeader('Upgrade', 'WebSocket');
-            $response->addHeader('Connection', 'Upgrade');
-            $response->addHeader('Sec-WebSocket-Origin', $request->getOrigin());
-            $response->addHeader('Sec-WebSocket-Location', $protocol . '://' . $request->getHost() . $request->getResource());
-            $response->addHeader('Sec-WebSocket-Accept', $this->getSignature($request->getKey()));
-
-            $this->complete = true;
-
-            return $response->buildResponse();
+        if (!$buffer->indexOf('/\r?\n\r?\n/', 0, Buffer::NEEDLE_REGEX) !== false) {
+            return false;
         }
 
-        return false;
+        $headers = $buffer->readLine('/\r?\n\r?\n/', Buffer::NEEDLE_REGEX);
+
+        $this->request->parseString($headers);
+
+        if ($this->request->getMethod() !== 'GET') {
+            throw new \RangeException('Invalid request - method must be GET');
+        }
+        if ($this->request->getHttpVersion() < 1.1) {
+            throw new \RangeException('Invalid request - request protocol version must be >=1.1');
+        }
+
+        $length = $this->request->getHeader('content-length');
+        if ($length && current($length)) {
+            throw new \RangeException('Invalid request - GET requests cannot contain a non-empty entity-body');
+        }
+        if (!$this->request->getHeader('host')) {
+            throw new \RangeException('Invalid request - missing Host: header');
+        }
+        if (!$key = $this->request->getHeader('sec-websocket-key')) {
+            throw new \RangeException('Invalid request - missing Sec-Websocket-Key: header');
+        }
+
+        $key = current($key);
+        $this->response->addHeader('Sec-WebSocket-Accept', $this->buildSignature($key));
+
+        return true;
     }
 
     /**
+     * Check whether the handshake is complete
+     *
      * @return bool Whether the handshake is complete
      */
     public function isComplete()
     {
         return $this->complete;
+    }
+
+    /**
+     * Gets the internal request object
+     *
+     * @return \WebSocketServer\Http\Request The internal request object
+     */
+    public function getRequest()
+    {
+        return $this->request;
+    }
+
+    /**
+     * Gets the internal response object
+     *
+     * @return \WebSocketServer\Http\Response The internal response object
+     */
+    public function getResponse()
+    {
+        return $this->response;
     }
 }
