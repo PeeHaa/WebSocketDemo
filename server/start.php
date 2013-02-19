@@ -134,13 +134,17 @@ class ChatApplication
      */
     public function onDisconnect(Event $event, Client $client)
     {
-        $user = $client->getAppData('user');
-        $user->removeClient($client);
+        if ($user = $client->getAppData('user')) {
+            $user->removeClient($client);
 
-        if ($user->numClients() < 1) {
-            $this->userManager->removeUser($user);
-            $client->getServer()->sendToAllButClient($user->getId() . ' has left the room', $client);
+            if ($user->numClients() < 1) {
+                $this->userManager->removeUser($user);
+                $client->getServer()->sendToAllButClient($user->getId() . ' has left the room', $client);
+            }
+        } else {
+            $client->getServer()->sendToAllButClient('#' . $client->getId() . ' has left the room', $client);
         }
+
     }
 
     /**
@@ -152,7 +156,13 @@ class ChatApplication
      */
     public function onError(Event $event, Client $client, $message)
     {
-        $client->getServer()->sendToAllButClient($client->getAppData('user')->getId() . ' fell over', $client);
+        if ($user = $client->getAppData('user')) {
+            $userId = $user->getId();
+        } else {
+            $userId = '#' . $client->getId();
+        }
+
+        $client->getServer()->sendToAllButClient($userId . ' fell over', $client);
     }
 }
 
@@ -281,5 +291,5 @@ $userManager = new UserManager(new UserFactory);
 
 $application = new ChatApplication($server, $userManager);
 
-//$application->start('0.0.0.0:1337');
-$application->start('tls://0.0.0.0:1337', 'localhost.cert');
+$application->start('0.0.0.0:1337');
+//$application->start('tls://0.0.0.0:1337', 'localhost.cert');

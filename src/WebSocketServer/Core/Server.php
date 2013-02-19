@@ -15,7 +15,6 @@ namespace WebSocketServer\Core;
 
 use \WebSocketServer\Event\EventEmitter,
     \WebSocketServer\Event\EventEmitters,
-    \WebSocketServer\Event\EventFactory,
     \WebSocketServer\Socket\ClientFactory,
     \WebSocketServer\Socket\Client,
     \WebSocketServer\Log\Loggable;
@@ -85,7 +84,6 @@ class Server implements EventEmitter
      * Build the server object
      *
      * @param \WebSocketServer\Socket\ClientFactory $clientFactory Factory which builds client socket objects
-     * @param \WebSocketServer\Socket\EventFactory  $eventFactory  Factory which builds event objects
      * @param \WebSocketServer\Log\Loggable         $logger        The logger
      */
     public function __construct(ClientFactory $clientFactory, Loggable $logger = null)
@@ -104,7 +102,7 @@ class Server implements EventEmitter
     private function log($message, $level = Loggable::LEVEL_INFO)
     {
         if (isset($this->logger)) {
-            $this->logger->write($callerStr . $message, $level);
+            $this->logger->write($message, $level);
         }
     }
 
@@ -187,6 +185,8 @@ class Server implements EventEmitter
 
     /**
      * Accept a new client socket
+     *
+     * @return resource The new client socket
      */
     private function acceptClientSocket()
     {
@@ -216,6 +216,8 @@ class Server implements EventEmitter
      * Get the last error from a socket
      *
      * @param resource $stream The stream socket resource
+     *
+     * @return string The error string
      */
     private function getLastSocketError($stream) {
         $errStr = '-1: Unknown error';
@@ -379,6 +381,8 @@ class Server implements EventEmitter
      * Start the server
      *
      * @param string $address The bind address
+     *
+     * @throws \LogicException When attempting to start the server while it is already running
      */
     public function start($address = null)
     {
@@ -397,6 +401,8 @@ class Server implements EventEmitter
 
     /**
      * Stop the server
+     *
+     * @throws \LogicException When attempting to stop the server while it is not running
      */
     public function stop()
     {
@@ -461,7 +467,7 @@ class Server implements EventEmitter
     /**
      * Send a message to all clients connected
      *
-     * @param string $message The message to be send
+     * @param string $message The message to be sent
      */
     public function broadcast($message)
     {
@@ -475,7 +481,7 @@ class Server implements EventEmitter
     /**
      * Send a message to all client but one
      *
-     * @param string                         $message The message to be send
+     * @param string                         $message The message to be sent
      * @param \WebSocketServer\Socket\Client $client  The client NOT to send the message to
      */
     public function sendToAllButClient($message, $skipClient)

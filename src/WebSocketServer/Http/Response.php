@@ -1,6 +1,6 @@
 <?php
 /**
- * This class represents an HTTP response. Meaning a request made from the server to the client.
+ * This class represents an HTTP handshake response
  *
  * PHP version 5.4
  *
@@ -16,7 +16,7 @@ namespace WebSocketServer\Http;
 use \WebSocketServer\Socket\Writable;
 
 /**
- * This class represents an HTTP response. Meaning a request made from the server to the client.
+ * This class represents an HTTP handshake response
  *
  * @category   WebSocketServer
  * @package    Http
@@ -25,7 +25,7 @@ use \WebSocketServer\Socket\Writable;
 class Response implements Writable
 {
     /**
-     * @var array The headers of the response
+     * @var string The response line
      */
     private $responseLine;
 

@@ -97,7 +97,7 @@ function Rooms() {
     });
 
     url = 'wss://localhost:1337/start.php?userid=' + cookieManager.getCookie('userid');
-    url = 'ws://www.chat.localhost:1337/chat-server.php?userid=' + cookieManager.getCookie('userid');
+    url = 'wss://www.chat.localhost:1337/chat-server.php?userid=' + cookieManager.getCookie('userid');
 
     webSocketClient.connect(url);
 }());

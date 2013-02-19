@@ -63,10 +63,11 @@ class Frame implements Writable
     /**
      * Build the instance of Frame
      *
-     * @param bool   $fin    Whether the frame has the FIN bit set
-     * @param int    $rsv    The RSV bitfield for the frame
-     * @param int    $opcode The opcode for the frame
-     * @param string $data   The frame data payload
+     * @param bool   $fin        Whether the frame has the FIN bit set
+     * @param int    $rsv        The RSV bitfield for the frame
+     * @param int    $opcode     The opcode for the frame
+     * @param string $data       The frame data payload
+     * @param string $maskingKey The key used to mask the data payload
      */
     public function __construct($fin, $rsv, $opcode, $data, $maskingKey = null)
     {

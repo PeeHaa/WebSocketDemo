@@ -63,7 +63,7 @@ class Handshake
      *
      * @param string $key The key used to sign the response
      *
-     * @return string The signture
+     * @return string The signature
      */
     private function buildSignature($key)
     {
@@ -71,7 +71,7 @@ class Handshake
     }
 
     /**
-     * Build the instance of the handshake
+     * Build the instance of the handshake from the client data buffer
      *
      * @return bool Whether a complete handshake request has been received
      */
@@ -112,9 +112,9 @@ class Handshake
     }
 
     /**
-     * Build the instance of the handshake
+     * Get the server handshake as a writable object
      *
-     * @return bool Whether a complete handshake request has been received
+     * @return \WebSocketServer\Http\Response The server handshake as a writable object
      */
     public function getServerHandshake()
     {

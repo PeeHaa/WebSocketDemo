@@ -1,6 +1,6 @@
 <?php
 /**
- * Object representing an event
+ * Class representing an event
  *
  * PHP version 5.4
  *
@@ -14,7 +14,7 @@
 namespace WebSocketServer\Event;
 
 /**
- * Object representing an event
+ * Class representing an event
  *
  * @category   WebSocketServer
  * @package    Event
@@ -23,7 +23,7 @@ namespace WebSocketServer\Event;
 class Event
 {
     /**
-     * @var object The object that emitted the event
+     * @var \WebSocketServer\Event\EventEmitter The object that emitted the event
      */
     private $sourceObject;
 
@@ -45,9 +45,9 @@ class Event
     /**
      * Build the event
      *
-     * @param object $sourceObject The object that emitted the event
-     * @param string $eventName    The name of the event
-     * @param array  $arguments    The arguments passed to the event handlers
+     * @param \WebSocketServer\Event\EventEmitter $sourceObject The object that emitted the event
+     * @param string                              $eventName    The name of the event
+     * @param array                               $arguments    The arguments passed to the event handlers
      */
     public function __construct($sourceObject, $eventName, array $arguments)
     {
@@ -59,7 +59,7 @@ class Event
     /**
      * Get the object that emitted the event
      *
-     * @return object The object that emitted the event
+     * @return \WebSocketServer\Event\EventEmitter The object that emitted the event
      */
     public function getSourceObject()
     {

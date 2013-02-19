@@ -170,12 +170,14 @@ class Client implements EventEmitter
     private function log($message, $level = Loggable::LEVEL_INFO)
     {
         if (isset($this->logger)) {
-            $this->logger->write($callerStr . $message, $level);
+            $this->logger->write($message, $level);
         }
     }
 
     /**
      * Get the last error from the client socket
+     *
+     * @return string The error string
      */
     private function getLastSocketError() {
         $errStr = '-1: Unknown error';
