@@ -1,3 +1,8 @@
+<?php
+    if (!isset($_COOKIE['userid'])) {
+        setcookie('userid', uniqid());
+    }
+?>
 <html>
   <head>
     <title>WebSocket simple chat application demo</title>
@@ -11,6 +16,7 @@
       <input type="submit" name="submit" value="Send">
     </form>
     <script src="js/WebSocket.js"></script>
+    <script src="js/CookieManager.js"></script>
     <script src="js/main.js"></script>
   </body>
 </html>

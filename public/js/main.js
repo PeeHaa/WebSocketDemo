@@ -1,7 +1,11 @@
 (function() {
-    var webSocketClient = new WebSocketClient(true);
+    var webSocketClient, cookieManager, url;
 
-    webSocketClient.connect('ws://www.chat.localhost:1337/start.php');
+    webSocketClient = new WebSocketClient(true);
+    cookieManager = new CookieManager();
+
+    url = 'wss://localhost:1337/start.php?userid=' + cookieManager.getCookie('userid');
+    webSocketClient.connect(url);
 
     document.getElementById('send-message').addEventListener('submit', function(e) {
         e.preventDefault();

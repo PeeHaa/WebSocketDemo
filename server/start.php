@@ -7,8 +7,11 @@
 use \WebSocketServer\Core\ServerFactory,
     \WebSocketServer\Core\Server,
     \WebSocketServer\Event\Event,
+    \WebSocketServer\Http\Request,
+    \WebSocketServer\Http\Response,
     \WebSocketServer\Socket\Client,
     \WebSocketServer\Socket\Frame,
+    \WebSocketServer\Socket\Message,
     \WebSocketServer\Log\Loggable;
 
 // setup environment
@@ -29,13 +32,19 @@ class ChatApplication
     private $server;
 
     /**
+     * @var \UserManager The user manager
+     */
+    private $userManager;
+
+    /**
      * Construct the application
      *
      * @param \WebSocketServer\Core\Server $server The websocket server
      */
-    public function __construct(Server $server)
+    public function __construct(Server $server, UserManager $userManager)
     {
         $this->server = $server;
+        $this->userManager = $userManager;
     }
 
     /**
@@ -49,7 +58,10 @@ class ChatApplication
             $this->server->setSocketContextOption('ssl', 'local_cert', $localCert);
         }
 
+        // $client->on('listening', ...);
         $this->server->on('clientconnect', [$this, 'onClientConnect']);
+        // $client->on('clientremove', ...);
+        // $client->on('close', ...);
 
         $this->server->start($address);
     }
@@ -62,27 +74,55 @@ class ChatApplication
      */
     public function onClientConnect(Event $event, Client $client)
     {
+        // $client->on('cryptoenabled', ...);
+        $client->on('handshake',  [$this, 'onHandshake' ]);
+        // $client->on('frame', ...);
         $client->on('message',    [$this, 'onMessage'   ]);
         $client->on('disconnect', [$this, 'onDisconnect']);
         $client->on('error',      [$this, 'onError'     ]);
+    }
 
-        $client->getServer()->sendToAllButClient('User #' . $client->getId() . ' entered the room', $client);
+    /**
+     * Callback when a client connects
+     *
+     * @param \WebSocketServer\Event\Event   $event    The event
+     * @param \WebSocketServer\Socket\Client $client   The client
+     * @param \WebSocketServer\Http\Request  $request  The handshake request
+     * @param \WebSocketServer\Http\Response $response The handshake response
+     *
+     * @return bool Whether the handshake was accepted
+     */
+    public function onHandshake(Event $event, Client $client, Request $request, Response $response)
+    {
+        $userId = $request->getUrlVar('userid');
+        $user = $this->userManager->getUserById($userId);
+        $user->addClient($client);
+
+        $client->setAppData('user', $user);
+        
+        if ($user->numClients() < 2) {
+            $client->getServer()->sendToAllButClient($userId . ' entered the room', $client);
+        }
+
+        return true;
     }
 
     /**
      * Callback when a client sends a message
      *
-     * @param \WebSocketServer\Event\Event   $event  The event
-     * @param \WebSocketServer\Socket\Client $client The client
-     * @param \WebSocketServer\Socket\Frame  $frame  The message
+     * @param \WebSocketServer\Event\Event    $event   The event
+     * @param \WebSocketServer\Socket\Client  $client  The client
+     * @param \WebSocketServer\Socket\Message $message The message
      */
-    public function onMessage(Event $event, Client $client, Frame $frame)
+    public function onMessage(Event $event, Client $client, Message $message)
     {
-        if ($frame->getData() == '!!stop') {
-            $client->getServer()->broadcast('#' . $client->getId() . ' stopped the server');
-            $client->getServer()->stop();
-        } else {
-            $client->getServer()->broadcast('#' . $client->getId() . ': ' . $frame->getData());
+        if ($message->getOpcode() === Message::OP_TEXT) {
+            if ($message->getData() == '!!stop') {
+                $client->getServer()->broadcast($client->getAppData('user')->getId() . ' stopped the server');
+                $client->getServer()->stop();
+            } else {
+                $client->getServer()->broadcast($client->getAppData('user')->getId() . ': ' . $message->getData());
+            }
         }
     }
 
@@ -94,7 +134,13 @@ class ChatApplication
      */
     public function onDisconnect(Event $event, Client $client)
     {
-        $client->getServer()->sendToAllButClient('User #' . $client->getId() . ' left the room', $client);
+        $user = $client->getAppData('user');
+        $user->removeClient($client);
+
+        if ($user->numClients() < 1) {
+            $this->userManager->removeUser($user);
+            $client->getServer()->sendToAllButClient($user->getId() . ' has left the room', $client);
+        }
     }
 
     /**
@@ -106,7 +152,7 @@ class ChatApplication
      */
     public function onError(Event $event, Client $client, $message)
     {
-        $client->getServer()->sendToAllButClient('User #' . $client->getId() . ' fell over', $client);
+        $client->getServer()->sendToAllButClient($client->getAppData('user')->getId() . ' fell over', $client);
     }
 }
 
@@ -161,12 +207,79 @@ class EchoOutput implements Loggable
     }
 }
 
+class UserManager
+{
+    private $users = [];
+
+    private $userFactory;
+
+    public function __construct(UserFactory $userFactory)
+    {
+        $this->userFactory = $userFactory;
+    }
+
+    public function getUserById($id)
+    {
+        if (!isset($this->users[$id])) {
+            $this->users[$id] = $this->userFactory->create($id);
+        }
+
+        return $this->users[$id];
+    }
+
+    public function removeUser(User $user)
+    {
+        unset($this->users[$user->getId()]);
+    }
+}
+
+class User
+{
+    private $clients = [];   
+
+    private $id;
+    
+    public function __construct($id)
+    {
+        $this->id = $id;
+    }
+
+    public function getId()
+    {
+        return $this->id;
+    }
+
+    public function addClient(Client $client)
+    {
+        $this->clients[$client->getId()] = $client;
+    }
+
+    public function removeClient(Client $client)
+    {
+        unset($this->clients[$client->getId()]);
+    }
+
+    public function numClients()
+    {
+        return count($this->clients);
+    }
+}
+
+class UserFactory
+{
+    public function create($id)
+    {
+        return new User($id);
+    }
+}
+
 /**
  * Start the server
  */
 $server = (new ServerFactory)->create(new EchoOutput);
+$userManager = new UserManager(new UserFactory);
 
-$application = new ChatApplication($server);
+$application = new ChatApplication($server, $userManager);
 
 //$application->start('0.0.0.0:1337');
 $application->start('tls://0.0.0.0:1337', 'localhost.cert');
