@@ -20,7 +20,7 @@ namespace WebSocketServer\Socket;
  * @package    Socket
  * @author     Chris Wright <https://github.com/DaveRandom>
  */
-class MessageDecoderFactory
+class MessageEncoderFactory
 {
     /**
      * @var \WebSocketServer\Socket\FrameFactory Frame factory object
@@ -28,20 +28,13 @@ class MessageDecoderFactory
     private $frameFactory;
 
     /**
-     * @var \WebSocketServer\Socket\MessageFactory Message factory object
-     */
-    private $messageFactory;
-
-    /**
      * Build the factory object
      *
      * @param \WebSocketServer\Socket\FrameFactory   $frameFactory   Frame factory object
-     * @param \WebSocketServer\Socket\MessageFactory $messageFactory Message factory object
      */
-    public function __construct(FrameFactory $frameFactory, MessageFactory $messageFactory)
+    public function __construct(FrameFactory $frameFactory)
     {
         $this->frameFactory = $frameFactory;
-        $this->messageFactory = $messageFactory;
     }
 
     /**
@@ -52,6 +45,6 @@ class MessageDecoderFactory
      */
     public function create()
     {
-        return new MessageDecoder($this->frameFactory, $this->messageFactory);
+        return new MessageEncoder($this->frameFactory);
     }
 }

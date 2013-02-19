@@ -14,6 +14,7 @@
 namespace WebSocketServer\Core;
 
 use \WebSocketServer\Event\EventEmitter,
+    \WebSocketServer\Event\EventEmitters,
     \WebSocketServer\Event\EventFactory,
     \WebSocketServer\Socket\ClientFactory,
     \WebSocketServer\Socket\Client,
@@ -28,15 +29,12 @@ use \WebSocketServer\Event\EventEmitter,
  */
 class Server implements EventEmitter
 {
+    use EventEmitters;
+
     /**
      * @var \WebSocketServer\Socket\ClientFactory Factory which builds client socket objects
      */
     private $clientFactory;
-
-    /**
-     * @var \WebSocketServer\Socket\EventFactory Factory which builds event objects
-     */
-    private $eventFactory;
 
     /**
      * @var \WebSocketServer\Log\Loggable The logger
@@ -79,11 +77,6 @@ class Server implements EventEmitter
     private $clients = [];
 
     /**
-     * @var array[] Collection of registered event handlers
-     */
-    private $eventHandlers = [];
-
-    /**
      * @var bool Whether the server is running
      */
     private $running = false;
@@ -95,10 +88,9 @@ class Server implements EventEmitter
      * @param \WebSocketServer\Socket\EventFactory  $eventFactory  Factory which builds event objects
      * @param \WebSocketServer\Log\Loggable         $logger        The logger
      */
-    public function __construct(EventFactory $eventFactory, ClientFactory $clientFactory, Loggable $logger = null)
+    public function __construct(ClientFactory $clientFactory, Loggable $logger = null)
     {
         $this->clientFactory = $clientFactory;
-        $this->eventFactory  = $eventFactory;
         $this->logger        = $logger;
 
         $this->socketContext = stream_context_create();
@@ -112,7 +104,7 @@ class Server implements EventEmitter
     private function log($message, $level = Loggable::LEVEL_INFO)
     {
         if (isset($this->logger)) {
-            $this->logger->write($message, $level);
+            $this->logger->write($callerStr . $message, $level);
         }
     }
 
@@ -497,72 +489,5 @@ class Server implements EventEmitter
 
             $client->sendText($message);
         }
-    }
-
-    /**
-     * Register an event handler callback
-     *
-     * @param string   $eventName The event name
-     * @param callable $callback  The event handler
-     */
-    public function on($eventName, callable $callback)
-    {
-        if (!isset($this->eventHandlers[$eventName])) {
-            $this->eventHandlers[$eventName] = [];
-        }
-
-        $this->eventHandlers[$eventName][] = $callback;
-    }
-
-    /**
-     * Unregister a single event handler callback or all handlers for an event
-     *
-     * @param string   $eventName The event name
-     * @param callable $callback  The event handler
-     */
-    public function off($eventName, callable $callback = null)
-    {
-        if (isset($this->eventHandlers[$eventName])) {
-            if (isset($callback)) {
-                $key = array_search($callback, $this->eventHandlers[$eventName], true);
-                if ($key !== false) {
-                    array_splice($this->eventHandlers[$eventName], $key, 1);
-                }
-            } else {
-                $this->eventHandlers[$eventName] = [];
-            }
-        }
-    }
-
-    /**
-     * Trigger an event
-     *
-     * @param string $eventName The event name
-     * @param mixed  $arg,...   Arguments passed to the event handler
-     *
-     * @return bool The success state returned by the event callbacks
-     */
-    public function trigger($eventName)
-    {
-        $result = true;
-
-        if (isset($this->eventHandlers[$eventName])) {
-            $args = func_get_args();
-            array_shift($args);
-
-            $event = $this->eventFactory->create($this, $eventName, $args);
-            array_unshift($args, $event);
-
-            foreach ($this->eventHandlers[$eventName] as $handler) {
-                $handlerResult = call_user_func_array($handler, $args);
-
-                if ($handlerResult === false || $event->isContinuationStopped()) {
-                    $result = false;
-                    break;
-                }
-            }
-        }
-
-        return $result;
     }
 }

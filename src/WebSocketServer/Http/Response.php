@@ -13,6 +13,8 @@
  */
 namespace WebSocketServer\Http;
 
+use \WebSocketServer\Socket\Writable;
+
 /**
  * This class represents an HTTP response. Meaning a request made from the server to the client.
  *
@@ -20,7 +22,7 @@ namespace WebSocketServer\Http;
  * @package    Http
  * @author     Pieter Hordijk <info@pieterhordijk.com>
  */
-class Response
+class Response implements Writable
 {
     /**
      * @var array The headers of the response
@@ -64,7 +66,7 @@ class Response
      *
      * @return string The response
      */
-    public function buildResponse()
+    public function toRawData()
     {
         return $this->responseLine . "\r\n" . $this->buildHeaders() . "\r\n";
     }
@@ -79,7 +81,7 @@ class Response
         $headers = [];
         foreach ($this->headers as $name => $values) {
             foreach ($values as $value) {
-                $name = preg_replace('/(?<=^|-)[a-z]/', function($matches) {
+                $name = preg_replace_callback('/(?<=^|-)[a-z]/', function($matches) {
                     return strtoupper($matches[0]);
                 }, $name);
                 $headers[] = $name . ': ' . $value;

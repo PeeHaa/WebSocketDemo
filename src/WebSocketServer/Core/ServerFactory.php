@@ -19,6 +19,9 @@ use \WebSocketServer\Event\Emitter as EventEmitter,
     \WebSocketServer\Socket\HandshakeFactory,
     \WebSocketServer\Socket\DataBufferFactory,
     \WebSocketServer\Socket\FrameFactory,
+    \WebSocketServer\Socket\MessageFactory,
+    \WebSocketServer\Socket\MessageEncoderFactory,
+    \WebSocketServer\Socket\MessageDecoderFactory,
     \WebSocketServer\Http\RequestFactory,
     \WebSocketServer\Http\ResponseFactory,
     \WebSocketServer\Log\Loggable;
@@ -39,17 +42,19 @@ class ServerFactory
      */
     public function create(Loggable $logger = null)
     {
-        $eventFactory = new EventFactory;
+        $frameFactory = new FrameFactory;
         return new Server(
-            $eventFactory,
             new ClientFactory(
-                $eventFactory,
                 new HandshakeFactory(
                     new RequestFactory,
                     new ResponseFactory
                 ),
                 new DataBufferFactory,
-                new FrameFactory,
+                new MessageEncoderFactory($frameFactory),
+                new MessageDecoderFactory(
+                    $frameFactory,
+                    new MessageFactory
+                ),
                 $logger
             ),
             $logger

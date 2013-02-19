@@ -1,6 +1,6 @@
 <?php
 /**
- * This class represents a websocket frame
+ * This class represents a websocket message
  *
  * PHP version 5.4
  *
@@ -14,7 +14,7 @@
 namespace WebSocketServer\Socket;
 
 /**
- * This class represents a websocket frame
+ * This class represents a websocket message
  *
  * @category   WebSocketServer
  * @package    Socket
@@ -100,7 +100,7 @@ class Message
         $data = '';
 
         foreach ($this->frames as $frame) {
-            $data .= $frame->getData();
+            $data .= (string) $frame->getData();
         }
 
         return $data;
@@ -127,10 +127,20 @@ class Message
     /**
      * Get the number of frames that make up the message
      *
-     * @return bool The number of frames that make up the message
+     * @return int The number of frames that make up the message
      */
     public function getFrameCount()
     {
         return count($this->frames);
+    }
+
+    /**
+     * Get the frames that make up the message
+     *
+     * @return \WebSocketServer\Socket\Frame[] The frames that make up the message
+     */
+    public function getFrames()
+    {
+        return $this->frames;
     }
 }

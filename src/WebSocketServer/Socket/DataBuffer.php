@@ -83,22 +83,22 @@ class DataBuffer implements Buffer
     public function readLine($terminator = "\n", $flags = 0)
     {
         if ($flags & self::NEEDLE_REGEX) {
-            if (preg_match($needle, $this->buffer, $matches, PREG_OFFSET_CAPTURE, $offset)) {
+            if (preg_match($terminator, $this->buffer, $matches, PREG_OFFSET_CAPTURE)) {
                 $pos = $matches[0][1];
                 $length = strlen($matches[0][0]);
             } else {
                 $pos = false;
             }
         } else {
-            $pos = strpos($this->buffer, $terminator, $offset);
+            $pos = strpos($this->buffer, $terminator);
             $length = strlen($terminator);
         }
 
         if ($pos === false) {
-            return $flags & self::READ_PEAK ? $this->buffer : $this->drain();
+            return $flags & self::READ_PEEK ? $this->buffer : $this->drain();
         }
 
-        return $this->read($pos + $length, $flags);
+        return $this->read($pos + $length, 0, $flags);
     }
 
     /**

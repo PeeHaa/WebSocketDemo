@@ -13,6 +13,9 @@
  */
 namespace WebSocketServer\Socket;
 
+use \WebSocketServer\Event\EventEmitter,
+    \WebSocketServer\Event\EventEmitters;
+
 /**
  * Decodes raw data from the network into Frame and Message objects
  *
@@ -20,8 +23,10 @@ namespace WebSocketServer\Socket;
  * @package    Socket
  * @author     Chris Wright <https://github.com/DaveRandom>
  */
-class MessageDecoder
+class MessageDecoder implements EventEmitter
 {
+    use EventEmitters;
+
     /**
      * @var \WebSocketServer\Socket\FrameFactory Frame factory object
      */
@@ -43,11 +48,6 @@ class MessageDecoder
     private $pendingFrameHeader;
 
     /**
-     * @var array[] Collection of registered event handlers
-     */
-    private $eventHandlers = [];
-
-    /**
      * Build the message decoder object
      *
      * @param \WebSocketServer\Socket\FrameFactory   $frameFactory   Frame factory object
@@ -59,6 +59,10 @@ class MessageDecoder
         $this->messageFactory = $messageFactory;
     }
 
+    /**
+     *
+     * @throws \RangeException
+     */
     private function parseFrameHeader(Buffer $buffer)
     {
         if ($buffer->length() < 2) {
@@ -87,7 +91,7 @@ class MessageDecoder
             if (PHP_INT_MAX === 0x7fffffff) {
                 // Size of packets limited to 2.1GB on 32-bit platforms
                 // TODO: fix this (although arguably a non-problem, this is a huge security flaw)
-                if ($lengthLong32Pair[0] > 0 || $lengthLong32Pair[1] < 0) {
+                if ($lengthLong32Pair[0] !== 0 || $lengthLong32Pair[1] < 0) {
                     $buffer->read(10);
                     throw new \RangeException('A frame was received that stated its payload length to be larger than 0x7fffffff bytes, this platform does not support values that large');
                 }
@@ -95,6 +99,10 @@ class MessageDecoder
                 $length = $lengthLong32Pair[1];
             } else {
                 $length = ($lengthLong32Pair[0] << 32) | $lengthLong32Pair[1];
+                
+                if ($length < 0) {
+                    throw new \RangeException('Invalid frame: Most significant bit of 64-bit length field set');
+                }
             }
         } else if ($lengthHeader === 0x7E) {
             if ($buffer->length() < 4) {
@@ -128,6 +136,8 @@ class MessageDecoder
             'maskingKey' => $maskingKey,
             'length'     => $length,
         ];
+
+        return true;
     }
 
     private function unmaskData($data, $key)
@@ -143,12 +153,15 @@ class MessageDecoder
             $data = $this->unmaskData($data, $this->pendingFrameHeader['maskingKey']);
         }
 
-        return $this->frameFactory->create(
+        $frame = $this->frameFactory->create(
             $this->pendingFrameHeader['fin'],
             $this->pendingFrameHeader['rsv'],
             $this->pendingFrameHeader['opcode'],
             $data
         );
+        unset($this->pendingFrameHeader);
+
+        return $frame;
     }
 
     private function makeMessage(array $frames)
@@ -157,17 +170,20 @@ class MessageDecoder
     }
 
     /**
-     * Build the message decoder object
+     * Process the data buffer
      *
      * @param \WebSocketServer\Socket\Buffer $buffer Data buffer
      *
      * @return bool True if the buffer may have more data to process
-     *
-     * @throws \RangeException
      */
     public function processData(Buffer $buffer)
     {
-        if (!isset($this->pendingFrameHeader) && !$this->parseFrameHeader($buffer)) {
+        try {
+            if (!isset($this->pendingFrameHeader) && !$this->parseFrameHeader($buffer)) {
+                return false;
+            }
+        } catch (\RangeException $e) {
+            $this->trigger('error', $e->getMessage());
             return false;
         }
 
@@ -205,72 +221,5 @@ class MessageDecoder
         }
 
         return true;
-    }
-
-    /**
-     * Register an event handler callback
-     *
-     * @param string   $eventName The event name
-     * @param callable $callback  The event handler
-     */
-    public function on($eventName, callable $callback)
-    {
-        if (!isset($this->eventHandlers[$eventName])) {
-            $this->eventHandlers[$eventName] = [];
-        }
-
-        $this->eventHandlers[$eventName][] = $callback;
-    }
-
-    /**
-     * Unregister a single event handler callback or all handlers for an event
-     *
-     * @param string   $eventName The event name
-     * @param callable $callback  The event handler
-     */
-    public function off($eventName, callable $callback = null)
-    {
-        if (isset($this->eventHandlers[$eventName])) {
-            if (isset($callback)) {
-                $key = array_search($callback, $this->eventHandlers[$eventName], true);
-                if ($key !== false) {
-                    array_splice($this->eventHandlers[$eventName], $key, 1);
-                }
-            } else {
-                $this->eventHandlers[$eventName] = [];
-            }
-        }
-    }
-
-    /**
-     * Trigger an event
-     *
-     * @param string $eventName The event name
-     * @param mixed  $arg,...   Arguments passed to the event handler
-     *
-     * @return bool The success state returned by the event callbacks
-     */
-    public function trigger($eventName)
-    {
-        $result = true;
-
-        if (isset($this->eventHandlers[$eventName])) {
-            $args = func_get_args();
-            array_shift($args);
-
-            $event = $this->eventFactory->create($this, $eventName, $args);
-            array_unshift($args, $event);
-
-            foreach ($this->eventHandlers[$eventName] as $handler) {
-                $handlerResult = call_user_func_array($handler, $args);
-
-                if ($handlerResult === false || $event->isContinuationStopped()) {
-                    $result = false;
-                    break;
-                }
-            }
-        }
-
-        return $result;
     }
 }

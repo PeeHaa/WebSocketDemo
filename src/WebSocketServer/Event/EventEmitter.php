@@ -43,6 +43,8 @@ interface EventEmitter
      *
      * @param string $eventName The event name
      * @param mixed  $arg,...   Arguments passed to the event handler
+     *
+     * @return bool The success state returned by the event callbacks
      */
     public function trigger($eventName);
 }

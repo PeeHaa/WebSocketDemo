@@ -27,11 +27,6 @@ use \WebSocketServer\Core\Server,
 class ClientFactory
 {
     /**
-     * @var \WebSocketServer\Event\EventFactory Event factory
-     */
-    private $eventFactory;
-
-    /**
      * @var \WebSocketServer\Socket\HandshakeFactory Handshake factory
      */
     private $handshakeFactory;
@@ -42,9 +37,14 @@ class ClientFactory
     private $bufferFactory;
 
     /**
-     * @var \WebSocketServer\Socket\FrameFactory Frame factory
+     * @var \WebSocketServer\Socket\MessageEncoderFactory Message encoder factory
      */
-    private $frameFactory;
+    private $messageEncoderFactory;
+
+    /**
+     * @var \WebSocketServer\Socket\MessageDecoderFactory Message decoder factory
+     */
+    private $messageDecoderFactory;
 
     /**
      * @var \WebSocketServer\Log\Loggable The logger
@@ -54,24 +54,24 @@ class ClientFactory
     /**
      * Build the client factory object
      *
-     * @param \WebSocketServer\Event\EventFactory       $eventFactory     Event factory
-     * @param \WebSocketServer\Socket\HandshakeFactory  $handshakeFactory Handshake factory
-     * @param \WebSocketServer\Socket\DataBufferFactory $bufferFactory    Buffer factory
-     * @param \WebSocketServer\Socket\FrameFactory      $frameFactory     Frame factory
-     * @param \WebSocketServer\Log\Loggable             $logger           The logger
+     * @param \WebSocketServer\Socket\HandshakeFactory      $handshakeFactory      Handshake factory
+     * @param \WebSocketServer\Socket\DataBufferFactory     $bufferFactory         Buffer factory
+     * @param \WebSocketServer\Socket\MessageEncoderFactory $messageEncoderFactory Message encoder factory
+     * @param \WebSocketServer\Socket\MessageDecoderFactory $messageDecoderFactory Message decoder factory
+     * @param \WebSocketServer\Log\Loggable                 $logger                The logger
      */
     public function __construct(
-        EventFactory $eventFactory,
         HandshakeFactory $handshakeFactory,
         DataBufferFactory $bufferFactory,
-        FrameFactory $frameFactory,
+        MessageEncoderFactory $messageEncoderFactory,
+        MessageDecoderFactory $messageDecoderFactory,
         Loggable $logger = null
     ) {
-        $this->eventFactory     = $eventFactory;
-        $this->handshakeFactory = $handshakeFactory;
-        $this->bufferFactory    = $bufferFactory;
-        $this->frameFactory     = $frameFactory;
-        $this->logger           = $logger;
+        $this->handshakeFactory      = $handshakeFactory;
+        $this->bufferFactory         = $bufferFactory;
+        $this->messageEncoderFactory = $messageEncoderFactory;
+        $this->messageDecoderFactory = $messageDecoderFactory;
+        $this->logger                = $logger;
     }
 
     /**
@@ -79,7 +79,7 @@ class ClientFactory
      *
      * @param resource                     $socket         The socket the client uses
      * @param int                          $securityMethod The \STREAM_CRYPTO_METHOD_* constant used for enabling security
-     * @param \WebSocketServer\Core\Server $id             The unique identifier for this client
+     * @param \WebSocketServer\Core\Server $server         The server instance the client belongs to
      *
      * @return \WebSocketServer\Socket\Client New instance of a socket client
      */
@@ -87,10 +87,10 @@ class ClientFactory
     {
         return new Client(
             $socket, $securityMethod, $server,
-            $this->eventFactory,
             $this->handshakeFactory->create(),
             $this->bufferFactory->create(),
-            $this->frameFactory,
+            $this->messageEncoderFactory->create(),
+            $this->messageDecoderFactory->create(),
             $this->logger
         );
     }

@@ -94,10 +94,12 @@ class Request
                 $this->headers[$name][] = $value;
             }
 
-            foreach ((array) $this->headers['cookie'] as $cookies) {
-                if (preg_match_all('/(?:;\s*)?([^=]+)=([^;]+)/', $cookies, $matches)) {
-                    foreach ($matches[1] as $i => $name) {
-                        $this->cookies[$name] = $matches[2][$i];
+            if (isset($this->headers['cookie'])) {
+                foreach ($this->headers['cookie'] as $cookies) {
+                    if (preg_match_all('/(?:;\s*)?([^=]+)=([^;]+)/', $cookies, $matches)) {
+                        foreach ($matches[1] as $i => $name) {
+                            $this->cookies[$name] = $matches[2][$i];
+                        }
                     }
                 }
             }
@@ -149,7 +151,7 @@ class Request
      *
      * @param string $name The name of the url parameter
      */
-    public function getUrlParameter($name) {
+    public function getUrlVar($name) {
         return isset($this->urlParams[$name]) ? $this->urlParams[$name] : null;
     }
 }

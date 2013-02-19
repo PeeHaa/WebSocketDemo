@@ -81,6 +81,8 @@ class Handshake
             return false;
         }
 
+        $this->complete = true;
+
         $headers = $buffer->readLine('/\r?\n\r?\n/', Buffer::NEEDLE_REGEX);
 
         $this->request->parseString($headers);
@@ -107,6 +109,16 @@ class Handshake
         $this->response->addHeader('Sec-WebSocket-Accept', $this->buildSignature($key));
 
         return true;
+    }
+
+    /**
+     * Build the instance of the handshake
+     *
+     * @return bool Whether a complete handshake request has been received
+     */
+    public function getServerHandshake()
+    {
+        return $this->response;
     }
 
     /**
