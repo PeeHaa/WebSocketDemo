@@ -22,10 +22,15 @@ namespace WebSocketServer\Log;
  */
 interface Loggable
 {
+    const LEVEL_ERROR = 1;
+    const LEVEL_WARN  = 2;
+    const LEVEL_INFO  = 3;
+    const LEVEL_DEBUG = 4;
+
     /**
      * Write a message to the log
      *
      * @param string $message The message
      */
-    public function write($message);
+    public function write($message, $level);
 }

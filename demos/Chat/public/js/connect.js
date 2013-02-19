@@ -55,6 +55,9 @@ function Rooms() {
     var authentication = new Authentication();
     var rooms = new Rooms();
 
+    var webSocketClient, cookieManager, url;
+    cookieManager = new CookieManager();
+
     var webSocketClient = new WebSocketClient({
         onopen: function(data) {
             webSocketClient.send(JSON.stringify({event: 'listRooms'}));
@@ -93,5 +96,8 @@ function Rooms() {
         e.stopPropagation();
     });
 
-    webSocketClient.connect('ws://www.chat.localhost:1337/chat-server.php');
+    url = 'wss://localhost:1337/start.php?userid=' + cookieManager.getCookie('userid');
+    url = 'ws://www.chat.localhost:1337/chat-server.php?userid=' + cookieManager.getCookie('userid');
+
+    webSocketClient.connect(url);
 }());

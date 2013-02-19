@@ -13,10 +13,12 @@
  */
 namespace WebSocketServer\Core;
 
-use \WebSocketServer\Event\Handler as EventHandler,
-    \WebSocketServer\Log\Loggable,
-    \WebSocketServer\Socket\Clientfactory,
-    \WebSocketServer\Socket\Client;
+use \WebSocketServer\Event\EventEmitter,
+    \WebSocketServer\Event\EventEmitters,
+    \WebSocketServer\Event\EventFactory,
+    \WebSocketServer\Socket\ClientFactory,
+    \WebSocketServer\Socket\Client,
+    \WebSocketServer\Log\Loggable;
 
 /**
  * The actual websocket server
@@ -25,17 +27,9 @@ use \WebSocketServer\Event\Handler as EventHandler,
  * @package    Core
  * @author     Pieter Hordijk <info@pieterhordijk.com>
  */
-class Server
+class Server implements EventEmitter
 {
-    /**
-     * @var \WebSocketServer\Event\Handler The event handler
-     */
-    private $eventHandler;
-
-    /**
-     * @var \WebSocketServer\Log\Loggable The logger
-     */
-    private $logger;
+    use EventEmitters;
 
     /**
      * @var \WebSocketServer\Socket\ClientFactory Factory which builds client socket objects
@@ -43,12 +37,37 @@ class Server
     private $clientFactory;
 
     /**
-     * @var resource The mast socket
+     * @var \WebSocketServer\Log\Loggable The logger
+     */
+    private $logger;
+
+    /**
+     * @var resource The master socket
      */
     private $master;
 
     /**
-     * @var array List of all the open sockets
+     * @var string The protocol to bind the socket to
+     */
+    private $bindProtocol;
+
+    /**
+     * @var string The IP address and port to bind the socket to
+     */
+    private $bindAddress;
+
+    /**
+     * @var int The \STREAM_CRYPTO_METHOD_* constant used for enabling security
+     */
+    private $securityMethod;
+
+    /**
+     * @var resource Stream context for sockets
+     */
+    private $socketContext;
+
+    /**
+     * @var resource[] List of all the open sockets
      */
     private $sockets = [];
 
@@ -58,88 +77,357 @@ class Server
     private $clients = [];
 
     /**
+     * @var bool Whether the server is running
+     */
+    private $running = false;
+
+    /**
      * Build the server object
      *
-     * @param \WebSocketServer\Event\Handler        $eventHandler    The event handler
-     * @param \WebSocketServer\Log\Loggable         $logger          The logger
-     * @param \WebSocketServer\Socket\ClientFactory $clientFactory   Factory which builds client socket objects
+     * @param \WebSocketServer\Socket\ClientFactory $clientFactory Factory which builds client socket objects
+     * @param \WebSocketServer\Socket\EventFactory  $eventFactory  Factory which builds event objects
+     * @param \WebSocketServer\Log\Loggable         $logger        The logger
      */
-    public function __construct(EventHandler $eventHandler, Loggable $logger, ClientFactory $clientFactory)
+    public function __construct(ClientFactory $clientFactory, Loggable $logger = null)
     {
-        $this->eventHandler  = $eventHandler;
-        $this->logger        = $logger;
         $this->clientFactory = $clientFactory;
+        $this->logger        = $logger;
+
+        $this->socketContext = stream_context_create();
+    }
+
+    /**
+     * Log a message to logger if defined
+     *
+     * @param string $message The message
+     */
+    private function log($message, $level = Loggable::LEVEL_INFO)
+    {
+        if (isset($this->logger)) {
+            $this->logger->write($callerStr . $message, $level);
+        }
+    }
+
+    /**
+     * Main server loop
+     *
+     * @throws \LogicException   When bind address is not set
+     * @throws \RuntimeException When setting up the socket fails
+     */
+    private function run()
+    {
+        $this->createMasterSocket();
+
+        $this->log('Server started');
+        $this->running = true;
+
+        while ($this->running) {
+            $read = $this->sockets;
+            $write = $this->getPendingWriteSockets();
+            $except = $tv_sec = null;
+
+            stream_select($read, $write, $except, $tv_sec);
+
+            foreach ($read as $socket) {
+                if ($socket == $this->master) {
+                    $this->addClient();
+                } else {
+                    $this->clients[(int) $socket]->processRead();
+                }
+            }
+
+            foreach ((array) $write as $socket) {
+                $this->clients[(int) $socket]->processWrite();
+            }
+        }
+
+        foreach ($this->clients as $client) {
+            $client->disconnect();
+        }
+        $this->destroyMasterSocket();
+
+        $this->log('Server stopped');
     }
 
     /**
      * Create the master socket
      *
-     * @param string $address The address to listen on
-     * @param int    $port    The port to listen on
-     *
+     * @throws \LogicException   When bind address is not set
      * @throws \RuntimeException When setting up the socket fails
      */
-    private function setMasterSocket($address, $port)
+    private function createMasterSocket()
     {
-        $this->master = socket_create(AF_INET, SOCK_STREAM, SOL_TCP);
+        $address = "tcp://{$this->bindAddress}";
+        $flags = STREAM_SERVER_BIND | STREAM_SERVER_LISTEN;
+        $socket = stream_socket_server($address, $errNo, $errStr, $flags, $this->socketContext);
 
-        if ($this->master === false) {
-            throw new \RuntimeException('Failed to create the master socket.');
+        if ($socket === false) {
+            throw new \RuntimeException('Failed to create the master socket: ' . $errNo . ': ' . $errStr);
         }
 
-        if (socket_set_option($this->master, SOL_SOCKET, SO_REUSEADDR, 1) === false) {
-            throw new \RuntimeException('Failed to set the master socket options.');
+        $this->sockets[(int) $socket] = $this->master = $socket;
+
+        $this->log('Listening on ' . $this->getBindAddress());
+        $this->log('Master socket: #' . ((int) $socket), Loggable::LEVEL_DEBUG);
+
+        $this->trigger('listening', $this);
+    }
+
+    /**
+     * Destroy the master socket
+     */
+    private function destroyMasterSocket()
+    {
+        $id = (int) $this->master;
+        fclose($this->master);
+        unset($this->master, $this->sockets[$id]);
+
+        $this->trigger('close', $this);
+    }
+
+    /**
+     * Accept a new client socket
+     */
+    private function acceptClientSocket()
+    {
+        $socket = stream_socket_accept($this->master);
+
+        if ($socket) {
+            stream_set_blocking($socket, 0);
+
+            if ($this->securityMethod) {
+                $this->log('Beginning crypto negotiation');
+
+                if (stream_socket_enable_crypto($socket, true, $this->securityMethod) === false) {
+                    $this->log('stream_socket_enable_crypto() failed: ' . $this->getLastSocketError($socket), Loggable::LEVEL_WARN);
+
+                    @fclose($socket);
+                    $socket = false;
+                }
+            }
+        } else {
+            $this->log('stream_socket_accept() failed: ' . $this->getLastSocketError($this->master), Loggable::LEVEL_WARN);
         }
 
-        if (socket_bind($this->master, $address, $port) === false) {
-            throw new \RuntimeException('Failed to bind the master socket.');
+        return $socket;
+    }
+
+    /**
+     * Get the last error from a socket
+     *
+     * @param resource $stream The stream socket resource
+     */
+    private function getLastSocketError($stream) {
+        $errStr = '-1: Unknown error';
+
+        if (function_exists('socket_import_stream')) {
+            $socket = socket_import_stream($stream);
+            $errCode = socket_last_error($socket);
+            $errStr = $errCode . ': ' . socket_strerror($errCode);
         }
 
-        if (socket_listen($this->master) === false) {
-            throw new \RuntimeException('Failed to listen.');
-        }
-
-        $this->sockets[(int) $this->master] = $this->master;
-
-        $this->logger->write('Server Started : ' . (new \DateTime())->format('Y-m-d H:i:s'));
-        $this->logger->write('Listening on   : ' . $address . ':' . $port);
-        $this->logger->write('Master socket  : ' . $this->master . "\n");
+        return $errStr;
     }
 
     /**
      * Add a new client
-     *
-     * @param resource $socket The client socket
      */
     private function addClient()
     {
-        $socket = socket_accept($this->master);
-        if (!$socket) {
-            $errCode = socket_last_error($this->master);
-            $errStr = socket_strerror($errCode);
-            $this->logger->write('socket_accept() failed: '.$errCode.': '.$errStr);
+        $socket = $this->acceptClientSocket();
+
+        if ($socket) {
+            $client = $this->clientFactory->create($socket, $this->securityMethod, $this);
+            $this->clients[$client->getId()] = $client;
+            $this->sockets[$client->getId()] = $socket;
+
+            $this->trigger('clientconnect', $client);
+
+            $this->log('Added client: ' . ((int) $socket));
         }
-
-        $client = $this->clientFactory->create($socket, $this, $this->eventHandler);
-        $this->clients[$client->getId()] = $client;
-        $this->sockets[$client->getId()] = $socket;
-
-        $this->eventHandler->onConnect($this, $client);
-
-        $this->logger->write('Added client: ' . $socket);
     }
 
     /**
-     * Get a client based on socket
+     * Get an array of client sockets with data waiting to be written
      *
-     * @param resource $socket The socket of which to find the client
+     * @return array The array of sockets
+     */
+    private function getPendingWriteSockets()
+    {
+        $result = [];
+
+        foreach ($this->sockets as $socket) {
+            if ($socket !== $this->master && $this->clients[(int) $socket]->hasPendingWrite()) {
+                $result[] = $socket;
+            }
+        }
+
+        return $result ?: null;
+    }
+
+    /**
+     * Set the bind address for the master socket
+     *
+     * @param string $address The bind address
+     *
+     * @throws \LogicException           When attempting to set the address while the server is running
+     * @throws \InvalidArgumentException When $address is not a valid socket address
+     */
+    public function setBindAddress($address)
+    {
+        if ($this->isRunning()) {
+            throw new \LogicException('Cannot change bind address while the server is running');
+        }
+
+        $expr = '@
+            ^(?:(?P<prot>tcp|ssl(?:v(?:2|3|23))?|tls)://)? # Protocol
+            (?P<addr>
+                (?:\[?[0-9a-f:]+\]?)                       # IPv6 address
+              | (?:\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})     # IPv4 address
+            )
+            :(?P<port>\d{1,5})                             # Port 
+        @ix';
+        $match = preg_match($expr, $address, $parts);
+
+        if (!$match) {
+            throw new \InvalidArgumentException('Socket address in an invalid format');
+        }
+
+        $parts['addr'] = strtolower(trim($parts['addr'], '[]'));
+        if (filter_var($parts['addr'], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+            $address = $parts['addr'];
+        } else if (filter_var($parts['addr'], FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
+            $address = '['.$parts['addr'].']';
+        } else {
+            throw new \InvalidArgumentException('IP portion of socket address is invalid');
+        }
+
+        $port = (int) $parts['port'];
+        if ($port < 1 || $port > 65535) {
+            throw new \InvalidArgumentException('Port portion of socket address is invalid');
+        }
+        
+        if (!empty($parts['prot'])) {
+            $protocol = strtolower($parts['prot']);
+
+            if ($protocol !== 'tcp' && !in_array('openssl', get_loaded_extensions())) {
+                throw new \InvalidArgumentException('Socket protocol wrapper ' . $protocol . ' not available on this system');
+            }
+        } else {
+            $protocol = 'tcp';
+        }
+
+        switch ($protocol) {
+            case 'tls':
+                $securityMethod = \STREAM_CRYPTO_METHOD_TLS_SERVER;
+                break;
+
+            case 'sslv2':
+                $securityMethod = \STREAM_CRYPTO_METHOD_SSLv2_SERVER;
+                break;
+
+            case 'sslv3':
+                $securityMethod = \STREAM_CRYPTO_METHOD_SSLv3_SERVER;
+                break;
+
+            case 'ssl':
+            case 'sslv23':
+                $securityMethod = \STREAM_CRYPTO_METHOD_SSLv23_SERVER;
+                break;
+
+            default:
+                $securityMethod = 0;
+                break;
+        }
+
+        $this->bindProtocol   = $protocol;
+        $this->bindAddress    = $address . ':' . $port;
+        $this->securityMethod = $securityMethod;
+    }
+
+    /**
+     * Get the bind address for the master socket
+     *
+     * @return string The bind address
+     */
+    public function getBindAddress()
+    {
+        if (isset($this->bindProtocol, $this->bindAddress)) {
+            return "{$this->bindProtocol}://{$this->bindAddress}";
+        }
+    }
+
+    /**
+     * Set the bind address for the master socket
+     *
+     * @param string $address The bind address
+     *
+     * @throws \LogicException           When attempting to set the address while the server is running
+     * @throws \InvalidArgumentException When $address is not a valid socket address
+     */
+    public function setSocketContextOption($wrapper, $optName, $value)
+    {
+        // This method is a bit of a "make it work" half-job
+        // TODO: make this better
+
+        $target = $this->running ? $this->socket : $this->socketContext;
+
+        stream_context_set_option($target, $wrapper, $optName, $value);
+    }
+
+    /**
+     * Start the server
+     *
+     * @param string $address The bind address
+     */
+    public function start($address = null)
+    {
+        if ($this->running) {
+            throw new \LogicException('Cannot start server, already running');
+        }
+
+        if (isset($address)) {
+            $this->setBindAddress($address);
+        }
+
+        $this->log('Starting server');
+
+        $this->run();
+    }
+
+    /**
+     * Stop the server
+     */
+    public function stop()
+    {
+        if (!$this->running) {
+            throw new \LogicException('Cannot stop server, not running');
+        }
+
+        $this->log('Stopping server');
+
+        $this->running = false;
+    }
+
+    /**
+     * Determine whether the server is running
+     *
+     * @return bool Whether the server is running
+     */
+    public function isRunning()
+    {
+        return $this->running;
+    }
+
+    /**
+     * Get a client based on id
+     *
+     * @param int $id The id of the client to return
      *
      * @return \WebSocketServer\Socket\Client The found client
      */
-    private function getClientBySocket($socket)
+    public function getClientById($id)
     {
-        $id = (int) $socket;
-
         if (isset($this->clients[$id])) {
             return $this->clients[$id];
         }
@@ -149,54 +437,24 @@ class Server
      * Disconnect client
      *
      * @param \WebSocketServer\Socket\Client $client The client to disconnect
-     * @throws \OutOfRangeException
+     *
+     * @throws \OutOfRangeException When passed client does not belong to this server
      */
-    public function disconnectClient(Client $client)
+    public function removeClient(Client $client)
     {
-        $id = $client->getId();
-
-        if (!isset($this->clients[$id], $this->sockets[$id])) {
+        if ($client->getServer() !== $this) {
             throw new \OutOfRangeException('Client does not belong to this server');
         }
 
-        $this->eventHandler->onDisconnect($this, $client);
-
-        if ($client->didHandshake()) {
-            $client->sendClose();
+        if ($client->isConnected()) {
+            $client->disconnect();
         }
 
-        socket_close($client->getSocket());
-        unset($this->clients[$id], $this->sockets[$id]);
+        $id = $client->getId();
+        if (isset($this->clients[$id])) {
+            unset($this->clients[$id], $this->sockets[$id]);
 
-        $this->logger->write('Disconnected client: ' . $socket);
-    }
-
-    /**
-     * Start and run the server
-     *
-     * @param string $address The address to listen on
-     * @param int    $port    The port to listen on
-     */
-    public function start($address, $port)
-    {
-        $this->setMasterSocket($address, $port);
-
-        while(true) {
-            $read = $this->sockets;
-            $write  = null;
-            $except = null;
-            $tv_sec = null;
-
-            socket_select($read, $write, $except, $tv_sec);
-
-            foreach ($read as $socket) {
-                if ($socket == $this->master) {
-                    $this->addClient();
-                } else {
-                    $client = $this->getClientBySocket($socket);
-                    $client->processRead();
-                }
-            }
+            $this->trigger('clientremove', $this, $client);
         }
     }
 
@@ -207,7 +465,7 @@ class Server
      */
     public function broadcast($message)
     {
-        $this->logger->write('Broadcasting message to all clients: ' . $message);
+        $this->log('Broadcasting message to all clients: ' . $message);
 
         foreach ($this->clients as $client) {
             $client->sendText($message);
@@ -222,7 +480,7 @@ class Server
      */
     public function sendToAllButClient($message, $skipClient)
     {
-        $this->logger->write('Broadcasting message to all clients but #' . $skipClient->getId() . ': ' . $message);
+        $this->log('Broadcasting message to all clients but #' . $skipClient->getId() . ': ' . $message);
 
         foreach ($this->clients as $client) {
             if ($client === $skipClient) {

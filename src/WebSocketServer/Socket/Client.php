@@ -13,11 +13,10 @@
  */
 namespace WebSocketServer\Socket;
 
-use \WebSocketServer\Core\Server,
-    \WebSocketServer\Event\Handler as EventHandler,
-    \WebSocketServer\Log\Loggable,
-    \WebSocketServer\Http\RequestFactory,
-    \WebSocketServer\Http\ResponseFactory;
+use \WebSocketServer\Event\EventEmitter,
+    \WebSocketServer\Event\EventEmitters,
+    \WebSocketServer\Core\Server,
+    \WebSocketServer\Log\Loggable;
 
 /**
  * This class represents a client
@@ -26,9 +25,14 @@ use \WebSocketServer\Core\Server,
  * @package    Socket
  * @author     Pieter Hordijk <info@pieterhordijk.com>
  */
-class Client
+class Client implements EventEmitter
 {
-    const SIGNING_KEY = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
+    use EventEmitters;
+
+    const SEND_RSV1    = 0x01;
+    const SEND_RSV2    = 0x02;
+    const SEND_RSV3    = 0x04;
+    const SEND_PARTIAL = 0x08;
 
     /**
      * @var int The unique identifier for this client, derived from the socket resource
@@ -41,14 +45,14 @@ class Client
     private $socket;
 
     /**
+     * @var int The \STREAM_CRYPTO_METHOD_* constant used for enabling security
+     */
+    private $securityMethod;
+
+    /**
      * @var \WebSocketServer\Core\Server The server to which this client belongs
      */
     private $server;
-
-    /**
-     * @var \WebSocketServer\Event\Handler Event handler
-     */
-    private $eventHandler;
 
     /**
      * @var \WebSocketServer\Log\Loggable The logger
@@ -56,14 +60,14 @@ class Client
     private $logger;
 
     /**
-     * @var \WebSocketServer\Http\RequestFactory Factory which http request objects
+     * @var \WebSocketServer\Socket\Handshake Handshake object
      */
-    private $requestFactory;
+    private $handshake;
 
     /**
-     * @var \WebSocketServer\Http\ResponseFactory Factory which http response objects
+     * @var \WebSocketServer\Socket\Buffer Buffer object
      */
-    private $responseFactory;
+    private $buffer;
 
     /**
      * @var \WebSocketServer\Socket\FrameFactory Frame factory
@@ -71,9 +75,19 @@ class Client
     private $frameFactory;
 
     /**
-     * @var boolean Whether the client already performed the handshake
+     * @var \WebSocketServer\Socket\MessageEncoder Message encoder object
      */
-    private $handshakeComplete = false;
+    private $messageEncoder;
+
+    /**
+     * @var \WebSocketServer\Socket\MessageDecoder Message decoder object
+     */
+    private $messageDecoder;
+
+    /**
+     * @var boolean Whether crypto negotiation on the socket is complete
+     */
+    private $cryptoComplete = false;
 
     /**
      * @var array A temporary store of an outstanding frame
@@ -81,171 +95,215 @@ class Client
     private $pendingDataFrame;
 
     /**
+     * @var array Data waiting to be written to socket
+     */
+    private $pendingWrites = [];
+
+    /**
+     * @var string Data waiting to be written to socket
+     */
+    private $pendingWriteBuffer = '';
+
+    /**
+     * @var array Additional data store for use by application
+     */
+    private $appData = [];
+
+    /**
      * Build the instance of the socket client
      *
-     * @param resource                              $socket          The socket the client uses
-     * @param \WebSocketServer\Core\Server          $server          The server to which this client belongs
-     * @param \WebSocketServer\Event\Handler        $eventHandler    The event handler
-     * @param \WebSocketServer\Log\Loggable         $logger          The logger
-     * @param \WebSocketServer\Http\RequestFactory  $requestFactory  Factory which http request objects
-     * @param \WebSocketServer\Http\ResponseFactory $responseFactory Factory which http response objects
-     * @param \WebSocketServer\Socket\FrameFactory  $frameFactory    Frame factory
+     * @param resource                               $socket         The socket the client uses
+     * @param int                                    $securityMethod The \STREAM_CRYPTO_METHOD_* constant used for enabling security
+     * @param \WebSocketServer\Core\Server           $server         The server to which this client belongs
+     * @param \WebSocketServer\Socket\Handshake      $handshake      Handshake object
+     * @param \WebSocketServer\Socket\Buffer         $buffer         Buffer object
+     * @param \WebSocketServer\Socket\MessageEncoder $messageEncoder Message encoder object
+     * @param \WebSocketServer\Socket\MessageDecoder $messageDecoder Message decoder object
+     * @param \WebSocketServer\Log\Loggable          $logger         The logger
      */
     public function __construct(
         $socket,
+        $securityMethod,
         Server $server,
-        EventHandler $eventHandler,
-        Loggable $logger,
-        RequestFactory $requestFactory,
-        ResponseFactory $responseFactory,
-        FrameFactory $frameFactory
+        Handshake $handshake,
+        Buffer $buffer,
+        MessageEncoder $messageEncoder,
+        MessageDecoder $messageDecoder,
+        Loggable $logger = null
     ) {
-        $this->socket = $socket;
-        $this->id     = (int) $socket;
+        $this->socket         = $socket;
+        $this->id             = (int) $socket;
+        $this->securityMethod = $securityMethod;
+        $this->server         = $server;
 
-        $this->server          = $server;
-        $this->eventHandler    = $eventHandler;
-        $this->logger          = $logger;
-        $this->requestFactory  = $requestFactory;
-        $this->responseFactory = $responseFactory;
-        $this->frameFactory    = $frameFactory;
-    }
+        $this->handshake      = $handshake;
+        $this->buffer         = $buffer;
+        $this->messageEncoder = $messageEncoder;
+        $this->messageDecoder = $messageDecoder;
+        $this->logger         = $logger;
 
-    /**
-     * Perform the handshake when a new client tries to connect
-     *
-     * @param string The request from the client
-     */
-    private function shakeHands($buffer)
-    {
-        $this->logger->write('Starting handshake process');
-        $this->logger->write("Client data: \n" . $buffer);
+        $messageDecoder->on('frame', function($event, Frame $frame) {
+            $this->trigger('frame', $this, $frame);
+        });
 
-        $request  = $this->requestFactory->create($buffer);
-        $request->parse();
-        $response = $this->responseFactory->create();
-
-        $response->addHeader('HTTP/1.1 101 WebSocket Protocol Handshake');
-        $response->addHeader('Upgrade', 'WebSocket');
-        $response->addHeader('Connection', 'Upgrade');
-        $response->addHeader('Sec-WebSocket-Origin', $request->getOrigin());
-        $response->addHeader('Sec-WebSocket-Location', 'ws://' . $request->getHost() . $request->getResource());
-        $response->addHeader('Sec-WebSocket-Accept', $this->getSignature($request->getKey()));
-
-        $responseString = $response->buildResponse();
-
-        socket_write($this->socket, $responseString, strlen($responseString));
-
-        $this->handshakeComplete = true;
-
-        $this->logger->write('Shaking hands with client');
-        $this->logger->write("Data sent to client: \n" . $responseString);
-    }
-
-    /**
-     * Generate a signature to be used when shaking hands with the client
-     *
-     * @param string $key The key used to sign the response
-     *
-     * @return string The signture
-     */
-    private function getSignature($key)
-    {
-        return base64_encode(sha1($key . self::SIGNING_KEY, true));
-    }
-
-    /**
-     * Process incoming message
-     *
-     * @param string The message
-     */
-    private function processMessage($message)
-    {
-        try {
-            try {
-                $frame = isset($this->pendingDataFrame) ? $this->pendingDataFrame : $this->frameFactory->create();
-                $frame->fromRawData($message);
-
-                if (!$frame->isFin()) {
-                    $this->pendingDataFrame = $frame;
-                } else {
-                    unset($this->pendingDataFrame);
-                }
-            } catch (NewControlFrameException $e) {
-                $frame = $this->frameFactory->create();
-                $frame->fromRawData($message);
+        $messageDecoder->on('message', function($event, Message $message) {
+            $this->trigger('message', $this, $message);
+            if ($message->getOpcode() === Message::OP_PING) {
+                $this->sendPong($message);
             }
+        });
 
-            if ($frame->isFin()) {
-                $this->logger->write('Client #' . $this->id . ' received message: ' . $frame->getData());
-
-                $this->eventHandler->onMessage($this->server, $this, $frame);
-            } else {
-                $this->logger->write('Client #' . $this->id . ' received partial message');
-            }
-        } catch (\Exception $e) {
-            $this->logger->write($e->getMessage());
-            $this->eventHandler->onError($this->server, $this, $e->getMessage());
+        $messageDecoder->on('error', function($event, $message) {
+            $this->log('Data decode failed: ' . $message, Loggable::LEVEL_ERROR);
+            $this->trigger('error', $this, $message);
 
             $this->disconnect();
+        });
+    }
+
+    /**
+     * Log a message to logger if defined
+     *
+     * @param string $message The message
+     * @param int    $level   The level of the message
+     */
+    private function log($message, $level = Loggable::LEVEL_INFO)
+    {
+        if (isset($this->logger)) {
+            $this->logger->write($callerStr . $message, $level);
         }
+    }
+
+    /**
+     * Get the last error from the client socket
+     */
+    private function getLastSocketError() {
+        $errStr = '-1: Unknown error';
+
+        if (function_exists('socket_import_stream')) {
+            $socket = socket_import_stream($this->socket);
+            $errCode = socket_last_error($socket);
+            $errStr = $errCode . ': ' . socket_strerror($errCode);
+        }
+
+        return $errStr;
     }
 
     /**
      * Fetch pending data from the wire
-     *
-     * @param int Maximum length of data to fetch
-     * @param int recv() flags
-     * @return string The fetched data
      */
-    private function fetchPendingData($length = 2048, $flags = 0)
+    private function readDataIntoBuffer()
     {
-        if (@socket_recv($this->socket, $buffer, $length, $flags) > 0) {
-            return $buffer;
-        }
+        $data = '';
+        $read = [$this->socket];
+        $write = $except = null;
+
+        /* Note by DaveRandom:
+         * This is a little odd. When I tested on Fedora, fread() was only returning
+         * 1 byte at a time. Other systems (including another Fedora box) didn't do
+         * this. This loop fixes the issue, and shouldn't negatively impact performance
+         * too badly, as sane systems will only iterate once, all parsers are buffered.
+         */
+        do {
+            $bytes = fread($this->socket, 8192);
+
+            if ($bytes === false) {
+                $this->log('Data read failed: ' . $this->getLastSocketError(), Loggable::LEVEL_ERROR);
+                $this->trigger('error', $this, 'Data read failed');
+
+                $this->disconnect();
+                return;
+            }
+
+            $data .= $bytes;
+        } while (stream_select($read, $write, $except, 0));
+
+        $this->log('Got data from socket: ' . $data, Loggable::LEVEL_DEBUG);
+        $this->buffer->write($data);
     }
 
     /**
-     * Process pending data on socket
+     * Perform the handshake when a new client tries to connect
      */
-    public function processRead()
+    private function shakeHands()
     {
-        $data = $this->fetchPendingData();
+        $this->log('Shaking hands');
+        $this->log("Buffer contents:\n" . $this->buffer, Loggable::LEVEL_DEBUG);
 
-        if (!isset($data)) {
+        try {
+            $success = $this->handshake->readClientHandshake($this->buffer);
+        } catch (\RangeException $e) {
+            $this->log('Handshake failed: ' . $e->getMessage());
+            $this->trigger('error', $this, $e->getMessage());
+
             $this->disconnect();
-        } elseif (!$this->handshakeComplete) {
-            $this->shakeHands($data);
-        } else {
-            $this->processMessage($data);
+            return;
+        }
+
+        if ($success) {
+            if (!$this->trigger('handshake', $this, $this->handshake->getRequest(), $this->handshake->getResponse())) {
+                $this->log('Handshake rejected by event handler');
+
+                $this->disconnect();
+            } else {
+                $response = $this->handshake->getServerHandshake();
+
+                $this->pendingWrites[] = $response;
+                $this->processWrite();
+
+                $this->log('Handshake process complete');
+                $this->log("Data sent to client: \n" . $response->toRawData(), Loggable::LEVEL_DEBUG);
+            }
         }
     }
 
     /**
-     * Disconnect client
+     * Convert a flag field to RSV bits
+     *
+     * @param int $flags A bitmask as flags
+     *
+     * @return int The RSV field
      */
-    public function diconnect() {
-        $this->server->disconnectClient($this);
+    private function makeRSVField($flags)
+    {
+        return ((int) $flags) & 0b111;
     }
 
     /**
-     * Get the server to which this client belongs
+     * Queue an object for writing
      *
-     * @return \WebSocketServer\Core\Server The server to which this client belongs
+     * @param \WebSocketServer\Socket\Writable $writable The data to send
      */
-    public function getServer()
+    private function writeObject(Writable $writable)
     {
-        return $this->server;
+        $this->pendingWrites[] = $writable;
+        $this->processWrite();
     }
 
     /**
-     * Get the socket of the client
+     * Send a pong message to a specific client
      *
-     * @return resource The socket the client uses
+     * @param \WebSocketServer\Socket\Message $message The ping message being responded to
      */
-    public function getSocket()
+    private function sendPong(Message $ping)
     {
-        return $this->socket;
+        $this->log('Sending pong frame to client #' . $this->id);
+        $this->log('Message data: ' . $ping->getData(), Loggable::LEVEL_DEBUG);
+
+        $this->writeObject($this->messageEncoder->encodeString($ping->getData(), Frame::OP_PONG));
+    }
+
+    /**
+     * Send a close message to a specific client
+     *
+     * @param string $message The message to be sent as the data payload
+     */
+    private function sendClose($message = '')
+    {
+        $this->log('Sending close frame to client #' . $this->id);
+        $this->log('Message data: ' . $message, Loggable::LEVEL_DEBUG);
+
+        $this->writeObject($this->messageEncoder->encodeString($message, Frame::OP_CLOSE));
     }
 
     /**
@@ -259,57 +317,198 @@ class Client
     }
 
     /**
+     * Get the server to which this client belongs
+     *
+     * @return \WebSocketServer\Core\Server The server to which this client belongs
+     */
+    public function getServer()
+    {
+        return $this->server;
+    }
+
+    /**
+     * Process pending data to be read from socket
+     */
+    public function processRead()
+    {
+        if (feof($this->socket)) {
+            $this->log('Client closed remote socket', Loggable::LEVEL_WARN);
+            $this->disconnect();
+        } else if ($this->securityMethod && !$this->cryptoComplete) {
+            $this->log('Continuing crypto negotiation');
+
+            $success = stream_socket_enable_crypto($this->socket, true, $this->securityMethod);
+            if ($success === false) {
+                $this->log('stream_socket_enable_crypto() failed: ' . $this->getLastSocketError(), Loggable::LEVEL_WARN);
+                $this->trigger('error', $this, 'stream_socket_enable_crypto() failed: ' . $this->getLastSocketError());
+
+                $this->disconnect();
+            } else if ($success) {
+                $this->log('Crypto negotiation complete');
+                $this->cryptoComplete = true;
+
+                $this->trigger('cryptoenabled', $this);
+            }
+        } else {
+            $this->readDataIntoBuffer();
+
+            if (!$this->handshake->isComplete()) {
+                $this->shakeHands();
+            } else {
+                $this->messageDecoder->processData($this->buffer);
+            }
+        }
+    }
+
+    /**
+     * Process pending data to be written to socket
+     */
+    public function processWrite()
+    {
+        if (!$this->hasPendingWrite()) {
+            return;
+        }
+
+        if (!$this->pendingWriteBuffer) {
+            $this->pendingWriteBuffer .= array_shift($this->pendingWrites)->toRawData();
+        }
+
+        $this->log('Writing data to client, buffer contents: ' . $this->pendingWriteBuffer, Loggable::LEVEL_DEBUG);
+
+        $bytesWritten = fwrite($this->socket, $this->pendingWriteBuffer);
+
+        if ($bytesWritten === false) {
+            $this->log('Data write failed', Loggable::LEVEL_ERROR);
+            $this->trigger('error', $this, 'Data write failed');
+
+            $this->disconnect();
+        } else if ($bytesWritten > 0) {
+            $this->pendingWriteBuffer = (string) substr($this->pendingWriteBuffer, $bytesWritten);
+        }
+    }
+
+    /**
+     * Determine whether the client has data waiting to be written
+     *
+     * @return bool Whether the client has data waiting to be written
+     */
+    public function hasPendingWrite()
+    {
+        return strlen($this->pendingWriteBuffer) || count($this->pendingWrites);
+    }
+
+    /**
+     * Determine whether the client socket is connected
+     *
+     * @return bool Whether the client socket is connected
+     */
+    public function isConnected()
+    {
+        return (bool) $this->socket;
+    }
+
+    /**
      * Check whether this client performed the handshake
      *
      * @return boolean True when the client performed the handshake
      */
     public function didHandshake()
     {
-        return $this->handshakeComplete;
-    }
-
-    private function sendFrame($frame) {
-        $data = $frame->toRawData();
-        socket_write($this->socket, $data, strlen($data));
+        return $this->handshake->isComplete();
     }
 
     /**
-     * Send a text message to a specific client
+     * Send a text message to the client
      *
-     * @param string                         $message The message to be send
-     * @param \WebSocketServer\Socket\Client $client  The client to send the message to
+     * @param string $data  The data to send
+     * @param int    $flags A bitmask of flags
      */
-    public function sendText($message)
+    public function sendText($data, $flags = 0)
     {
-        $frame = $this->frameFactory->create();
+        $this->log('Sending text message to client #' . $this->id);
+        $this->log('Message data: ' . $data, Loggable::LEVEL_DEBUG);
 
-        $frame->setData($message);
-        $frame->setOpcode(Frame::OP_TEXT);
-        $frame->setFin(true);
+        $fin = !($flags & self::SEND_PARTIAL);
+        $rsv = $this->makeRSVField($flags);
+        $opcode = Frame::OP_TEXT;
 
-        $this->logger->write('Sending message to client #' . $this->id . ': ' . $message);
-        $this->sendFrame($frame);
+        $this->writeObject($this->messageEncoder->encodeString($data, $opcode, $fin, $rsv));
     }
 
     /**
-     * Send a close message to a specific client
+     * Send a binary message to the client
      *
-     * @param string                         $message The message to be send
-     * @param \WebSocketServer\Socket\Client $client  The client to send the message to
+     * @param string $data  The data to send
+     * @param int    $flags A bitmask of flags
      */
-    public function sendClose($message = '')
+    public function sendBinary($data, $flags = 0)
     {
-        $frame = $this->frameFactory->create();
+        $this->log('Sending text message to client #' . $this->id);
+        $this->log('Message data: ' . $data, Loggable::LEVEL_DEBUG);
 
-        if (strlen($message) > 125) {
-            $message = substr($message, 0, 125);
+        $fin = !($flags & self::SEND_PARTIAL);
+        $rsv = $this->makeRSVField($flags);
+        $opcode = Frame::OP_BIN;
+
+        $this->writeObject($this->messageEncoder->encodeString($data, $opcode, $fin, $rsv));
+    }
+
+    /**
+     * Send a ping message to a specific client
+     */
+    public function ping()
+    {
+        // TODO: implement this properly
+        $this->log('Sending ping frame to client #' . $this->id);
+        $this->log('Message data:', Loggable::LEVEL_DEBUG);
+
+        $this->writeObject($this->messageEncoder->encodeString('', Frame::OP_PING));
+    }
+
+    /**
+     * Disconnect client
+     *
+     * @param string $message The message to be sent in the close frame
+     */
+    public function disconnect($closeMessage = '')
+    {
+        if ($this->isConnected()) {
+            if (!feof($this->socket)) {
+                if ($this->didHandshake()) {
+                    $this->sendClose((string) $closeMessage);
+                }
+
+                fclose($this->socket);
+            }
+
+            $this->socket = null;
+
+            $this->trigger('disconnect', $this);
+
+            if ($this->server->getClientById($this->id)) {
+                $this->server->removeClient($this);
+            }
         }
+    }
 
-        $frame->setData($message);
-        $frame->setOpcode(Frame::OP_CLOSE);
-        $frame->setFin(true);
+    /**
+     * Set an application data property
+     *
+     * @param string $name  The name of the property
+     * @param mixed  $value The value of the property
+     */
+    public function setAppData($name, $value) {
+        $this->appData[$name] = $value;
+    }
 
-        $this->logger->write('Sending close frame to client #' . $this->id . ': ' . $message);
-        $this->sendFrame($frame);
+    /**
+     * Get an application data property
+     *
+     * @param string $name  The name of the property
+     *
+     * @return mixed The value of the property
+     */
+    public function getAppData($name) {
+        return isset($this->appData[$name]) ? $this->appData[$name] : null;
     }
 }

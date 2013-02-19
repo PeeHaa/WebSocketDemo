@@ -1,6 +1,6 @@
 <?php
 /**
- * Exception thrown when a client sends a new control frame before the previous frame is complete
+ * Interface for objects that are directly writable to the socket
  *
  * PHP version 5.4
  *
@@ -14,10 +14,18 @@
 namespace WebSocketServer\Socket;
 
 /**
- * Exception thrown when a client sends a new control frame before the previous frame is complete
+ * Interface for objects that are directly writable to the socket
  *
  * @category   WebSocketServer
  * @package    Socket
  * @author     Chris Wright <https://github.com/DaveRandom>
  */
-class NewControlFrameException extends \RuntimeException {}
+interface Writable
+{
+    /**
+     * Get the raw data to write to the socket
+     *
+     * @return string The raw data
+     */
+    public function toRawData();
+}

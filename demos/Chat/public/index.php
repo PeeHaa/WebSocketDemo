@@ -1,3 +1,9 @@
+<?php
+    if (!isset($_COOKIE['userid'])) {
+        setcookie('userid', uniqid());
+    }
+?>
+
 <!DOCTYPE html>
 <html>
   <head>
@@ -36,6 +42,7 @@
       </div>
     </div>
     <script src="/js/WebSocketClient.js"></script>
+    <script src="/js/CookieManager.js"></script>
     <script src="/js/connect.js"></script>
   </body>
 </html>

@@ -14,10 +14,8 @@
 namespace WebSocketServer\Socket;
 
 use \WebSocketServer\Core\Server,
-    \WebSocketServer\Event\Handler as EventHandler,
-    \WebSocketServer\Log\Loggable,
-    \WebSocketServer\Http\RequestFactory,
-    \WebSocketServer\Http\ResponseFactory;
+    \WebSocketServer\Event\EventFactory,
+    \WebSocketServer\Log\Loggable;
 
 /**
  * This factory builds client sockets
@@ -29,9 +27,24 @@ use \WebSocketServer\Core\Server,
 class ClientFactory
 {
     /**
-     * @var \WebSocketServer\Event\Handler Event handler
+     * @var \WebSocketServer\Socket\HandshakeFactory Handshake factory
      */
-    private $eventHandler;
+    private $handshakeFactory;
+
+    /**
+     * @var \WebSocketServer\Socket\DataBufferFactory Buffer factory
+     */
+    private $bufferFactory;
+
+    /**
+     * @var \WebSocketServer\Socket\MessageEncoderFactory Message encoder factory
+     */
+    private $messageEncoderFactory;
+
+    /**
+     * @var \WebSocketServer\Socket\MessageDecoderFactory Message decoder factory
+     */
+    private $messageDecoderFactory;
 
     /**
      * @var \WebSocketServer\Log\Loggable The logger
@@ -39,61 +52,46 @@ class ClientFactory
     private $logger;
 
     /**
-     * @var \WebSocketServer\Http\RequestFactory Factory which http request objects
-     */
-    private $requestFactory;
-
-    /**
-     * @var \WebSocketServer\Http\ResponseFactory Factory which http response objects
-     */
-    private $responseFactory;
-
-    /**
-     * @var \WebSocketServer\Socket\FrameFactory Frame factory
-     */
-    private $frameFactory;
-
-    /**
      * Build the client factory object
      *
-     * @param \WebSocketServer\Event\Handler        $eventHandler    Event handler
-     * @param \WebSocketServer\Log\Loggable         $logger          The logger
-     * @param \WebSocketServer\Http\RequestFactory  $requestFactory  Factory which http request objects
-     * @param \WebSocketServer\Http\ResponseFactory $responseFactory Factory which http response objects
-     * @param \WebSocketServer\Socket\FrameFactory  $frameFactory    Frame factory
+     * @param \WebSocketServer\Socket\HandshakeFactory      $handshakeFactory      Handshake factory
+     * @param \WebSocketServer\Socket\DataBufferFactory     $bufferFactory         Buffer factory
+     * @param \WebSocketServer\Socket\MessageEncoderFactory $messageEncoderFactory Message encoder factory
+     * @param \WebSocketServer\Socket\MessageDecoderFactory $messageDecoderFactory Message decoder factory
+     * @param \WebSocketServer\Log\Loggable                 $logger                The logger
      */
     public function __construct(
-        EventHandler $eventHandler,
-        Loggable $logger,
-        RequestFactory $requestFactory,
-        ResponseFactory $responseFactory,
-        FrameFactory $frameFactory
+        HandshakeFactory $handshakeFactory,
+        DataBufferFactory $bufferFactory,
+        MessageEncoderFactory $messageEncoderFactory,
+        MessageDecoderFactory $messageDecoderFactory,
+        Loggable $logger = null
     ) {
-        $this->eventHandler    = $eventHandler;
-        $this->logger          = $logger;
-        $this->requestFactory  = $requestFactory;
-        $this->responseFactory = $responseFactory;
-        $this->frameFactory    = $frameFactory;
+        $this->handshakeFactory      = $handshakeFactory;
+        $this->bufferFactory         = $bufferFactory;
+        $this->messageEncoderFactory = $messageEncoderFactory;
+        $this->messageDecoderFactory = $messageDecoderFactory;
+        $this->logger                = $logger;
     }
 
     /**
      * Build the instance of the socket client
      *
-     * @param resource                       $socket The socket the client uses
-     * @param \WebSocketServer\Core\Server   $id     The unique identifier for this client
+     * @param resource                     $socket         The socket the client uses
+     * @param int                          $securityMethod The \STREAM_CRYPTO_METHOD_* constant used for enabling security
+     * @param \WebSocketServer\Core\Server $server         The server instance the client belongs to
      *
      * @return \WebSocketServer\Socket\Client New instance of a socket client
      */
-    public function create($socket, Server $server)
+    public function create($socket, $securityMethod, Server $server)
     {
         return new Client(
-            $socket,
-            $server,
-            $this->eventHandler,
-            $this->logger,
-            $this->requestFactory,
-            $this->responseFactory,
-            $this->frameFactory
+            $socket, $securityMethod, $server,
+            $this->handshakeFactory->create(),
+            $this->bufferFactory->create(),
+            $this->messageEncoderFactory->create(),
+            $this->messageDecoderFactory->create(),
+            $this->logger
         );
     }
 }

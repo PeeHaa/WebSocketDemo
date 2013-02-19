@@ -13,7 +13,7 @@
  */
 namespace WebSocketServer\Http;
 
-use WebSocketServer\Http\Parser\Parsable;
+use \WebSocketServer\Socket\Writable;
 
 /**
  * This class represents an HTTP response. Meaning a request made from the server to the client.
@@ -22,37 +22,43 @@ use WebSocketServer\Http\Parser\Parsable;
  * @package    Http
  * @author     Pieter Hordijk <info@pieterhordijk.com>
  */
-class Response
+class Response implements Writable
 {
+    /**
+     * @var array The headers of the response
+     */
+    private $responseLine;
+
     /**
      * @var array The headers of the response
      */
     private $headers = [];
 
     /**
-     * @var array The body of the response
-     */
-    private $body;
-
-    /**
      * Add a header to the response
      *
-     * @param string      $key   The name of the header field
-     * @param string|null $value The value of the header field
+     * @param string $name  The name of the header field
+     * @param string $value The value of the header field
      */
-    public function addHeader($key, $value = null)
+    public function addHeader($name, $value)
     {
-        $this->headers[$key] = $value;
+        $name = strtolower($name);
+
+        if (!isset($this->headers[$name])) {
+            $this->headers[$name] = [];
+        }
+
+        $this->headers[$name][] = $value;
     }
 
     /**
-     * Add a body to the response
+     * Set the response line
      *
-     * @param string $content The body of the response
+     * @param string $responseLine The response line
      */
-    public function setBody($content)
+    public function setResponseLine($responseLine)
     {
-        $this->body = $content;
+        $this->responseLine = trim($responseLine);
     }
 
     /**
@@ -60,9 +66,9 @@ class Response
      *
      * @return string The response
      */
-    public function buildResponse()
+    public function toRawData()
     {
-        return $this->buildHeaders() . "\r\n";
+        return $this->responseLine . "\r\n" . $this->buildHeaders() . "\r\n";
     }
 
     /**
@@ -72,15 +78,16 @@ class Response
      */
     private function buildHeaders()
     {
-        $headers = '';
-        foreach ($this->headers as $key => $value) {
-            if ($value !== null) {
-                $key .= ': ';
+        $headers = [];
+        foreach ($this->headers as $name => $values) {
+            foreach ($values as $value) {
+                $name = preg_replace_callback('/(?<=^|-)[a-z]/', function($matches) {
+                    return strtoupper($matches[0]);
+                }, $name);
+                $headers[] = $name . ': ' . $value;
             }
-
-            $headers .= $key . $value . "\r\n";
         }
 
-        return $headers;
+        return $headers ? implode("\r\n", $headers) . "\r\n" : '';
     }
 }

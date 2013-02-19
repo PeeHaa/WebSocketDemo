@@ -1,6 +1,6 @@
 <?php
 /**
- * Exception thrown when a client sends a new non-control frame before the previous frame is complete
+ * Factory for data buffers
  *
  * PHP version 5.4
  *
@@ -14,10 +14,21 @@
 namespace WebSocketServer\Socket;
 
 /**
- * Exception thrown when a client sends a new non-control frame before the previous frame is complete
+ * Factory for data buffers
  *
  * @category   WebSocketServer
  * @package    Socket
  * @author     Chris Wright <https://github.com/DaveRandom>
  */
-class NewNonControlFrameException extends \RuntimeException {}
+class DataBufferFactory
+{
+    /**
+     * Create a new data buffer
+     *
+     * @return \WebSocketServer\Socket\DataBuffer The data buffer
+     */
+    public function create()
+    {
+        return new DataBuffer;
+    }
+}
