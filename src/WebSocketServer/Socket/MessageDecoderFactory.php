@@ -1,6 +1,6 @@
 <?php
 /**
- * Decodes raw data from the network into Frame and Message objects
+ * Factory that creates message decoders
  *
  * PHP version 5.4
  *
@@ -14,7 +14,7 @@
 namespace WebSocketServer\Socket;
 
 /**
- * Decodes raw data from the network into Frame and Message objects
+ * Factory that creates message decoders
  *
  * @category   WebSocketServer
  * @package    Socket
@@ -45,10 +45,9 @@ class MessageDecoderFactory
     }
 
     /**
-     * Build the factory object
+     * Build the message decoder object
      *
-     * @param \WebSocketServer\Socket\FrameFactory   $frameFactory   Frame factory object
-     * @param \WebSocketServer\Socket\MessageFactory $messageFactory Message factory object
+     * @return \WebSocketServer\Socket\MessageDecoder The message decoder
      */
     public function create()
     {

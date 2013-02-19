@@ -1,7 +1,6 @@
 <?php
 /**
- * This class represents a websocket request. Meaning a request made from the client to the server.
- * Basically it is a simplified API which parses the request headers
+ * This class represents a websocket handshake request
  *
  * PHP version 5.4
  *
@@ -15,7 +14,7 @@
 namespace WebSocketServer\Http;
 
 /**
- * This class represents a websocket request. Meaning a request made from the client to the server.
+ * This class represents a websocket handshake request
  *
  * @category   WebSocketServer
  * @package    Http
@@ -57,6 +56,8 @@ class Request
      * Parse the request and fill the properties
      *
      * @param string $headers The headers of the handshake HTTP request
+     *
+     * @throws \InvalidArgumentException When the input data is not a valid HTTP request
      */
     public function parseString($headers)
     {
@@ -108,6 +109,8 @@ class Request
 
     /**
      * Get the method of the request
+     *
+     * @return string The method of the request
      */
     public function getMethod() {
         return $this->method;
@@ -115,6 +118,8 @@ class Request
 
     /**
      * Get the URI of the request
+     *
+     * @return string The URI of the request
      */
     public function getUri() {
         return $this->uri;
@@ -122,6 +127,8 @@ class Request
 
     /**
      * Get the HTTP version of the request
+     *
+     * @return string The HTTP version of the request
      */
     public function getHttpVersion() {
         return $this->httpVersion;
@@ -131,6 +138,8 @@ class Request
      * Get a header by name
      *
      * @param string $name The name of the header
+     *
+     * @return string The value of the header
      */
     public function getHeader($name) {
         $name = strtolower($name);
@@ -141,6 +150,8 @@ class Request
      * Get a cookie by name
      *
      * @param string $name The name of the cookie
+     *
+     * @return string The value of the cookie
      */
     public function getCookie($name) {
         return isset($this->cookies[$name]) ? $this->cookies[$name] : null;
@@ -150,6 +161,8 @@ class Request
      * Get a url parameter by name
      *
      * @param string $name The name of the url parameter
+     *
+     * @return string|array The value of the url parameter
      */
     public function getUrlVar($name) {
         return isset($this->urlParams[$name]) ? $this->urlParams[$name] : null;

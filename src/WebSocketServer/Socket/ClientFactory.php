@@ -1,6 +1,6 @@
 <?php
 /**
- * This factory builds client sockets
+ * Factory class for Clients
  *
  * PHP version 5.4
  *
@@ -14,11 +14,10 @@
 namespace WebSocketServer\Socket;
 
 use \WebSocketServer\Core\Server,
-    \WebSocketServer\Event\EventFactory,
     \WebSocketServer\Log\Loggable;
 
 /**
- * This factory builds client sockets
+ * Factory class for Clients
  *
  * @category   WebSocketServer
  * @package    Socket

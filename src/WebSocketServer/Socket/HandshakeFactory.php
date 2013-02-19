@@ -1,6 +1,6 @@
 <?php
 /**
- * This class represents a websocket frame
+ * Factory for handshake objects
  *
  * PHP version 5.4
  *
@@ -17,7 +17,7 @@ use \WebSocketServer\Http\RequestFactory,
     \WebSocketServer\Http\ResponseFactory;
 
 /**
- * This class represents a websocket frame
+ * Factory for handshake objects
  *
  * @category   WebSocketServer
  * @package    Socket

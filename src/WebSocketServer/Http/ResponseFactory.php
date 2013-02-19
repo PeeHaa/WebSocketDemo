@@ -23,7 +23,7 @@ namespace WebSocketServer\Http;
 class ResponseFactory
 {
     /**
-     * Build a request
+     * Build a response
      *
      * @return WebSocketServer\Http\Response The response object
      */

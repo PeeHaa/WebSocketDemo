@@ -4,7 +4,9 @@
     webSocketClient = new WebSocketClient(true);
     cookieManager = new CookieManager();
 
-    url = 'wss://localhost:1337/start.php?userid=' + cookieManager.getCookie('userid');
+    url = 'ws://localhost:1337/start.php?userid=' + cookieManager.getCookie('userid');
+    //url = 'wss://localhost:1337/start.php?userid=' + cookieManager.getCookie('userid');
+
     webSocketClient.connect(url);
 
     document.getElementById('send-message').addEventListener('submit', function(e) {

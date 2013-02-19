@@ -13,9 +13,7 @@
  */
 namespace WebSocketServer\Core;
 
-use \WebSocketServer\Event\Emitter as EventEmitter,
-    \WebSocketServer\Event\EventFactory,
-    \WebSocketServer\Socket\ClientFactory,
+use \WebSocketServer\Socket\ClientFactory,
     \WebSocketServer\Socket\HandshakeFactory,
     \WebSocketServer\Socket\DataBufferFactory,
     \WebSocketServer\Socket\FrameFactory,
@@ -38,7 +36,9 @@ class ServerFactory
     /**
      * Create a server and dependencies
      *
-     * @var Loggable $logger Optional event logger
+     * @param \WebSocketServer\Log\Loggable $logger Optional event logger
+     *
+     * @return \WebSocketServer\Core\Server The created server
      */
     public function create(Loggable $logger = null)
     {

@@ -31,6 +31,7 @@ interface Loggable
      * Write a message to the log
      *
      * @param string $message The message
+     * @param int    $level   The level of the message
      */
     public function write($message, $level);
 }

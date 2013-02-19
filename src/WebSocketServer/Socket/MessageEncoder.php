@@ -1,6 +1,6 @@
 <?php
 /**
- * Decodes raw data from the network into Frame and Message objects
+ * Encodes data into frame objects
  *
  * PHP version 5.4
  *
@@ -14,7 +14,7 @@
 namespace WebSocketServer\Socket;
 
 /**
- * Decodes raw data from the network into Frame and Message objects
+ * Encodes data into frame objects
  *
  * @category   WebSocketServer
  * @package    Socket
@@ -38,8 +38,14 @@ class MessageEncoder
     }
 
     /**
+     * Build a frame from raw data
      *
-     * @throws \RangeException
+     * @param string $data   The data string
+     * @param int    $opcode The frame opcode
+     * @param bool   $fin    True if the frame has the FIN bit set
+     * @param int    $rsv    The RSV bit field for the frame
+     *
+     * @return WebSocketServer\Socket\Frame The created frame
      */
     public function encodeString($data, $opcode, $fin = true, $rsv = 0)
     {

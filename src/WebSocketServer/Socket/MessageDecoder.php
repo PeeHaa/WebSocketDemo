@@ -60,14 +60,19 @@ class MessageDecoder implements EventEmitter
     }
 
     /**
+     * Parses data from a data buffer into an array representing a frame header
      *
-     * @throws \RangeException
+     * @param \WebSocketServer\Socket\Buffer $buffer The data buffer
+     *
+     * @return bool True is a complete frame header was successfully parsed from the buffer
+     *
+     * @throws \RangeException When the frame is invalid
      */
     private function parseFrameHeader(Buffer $buffer)
     {
         if ($buffer->length() < 2) {
             return false;
-        }
+        } 
 
         $firstByte  = ord($buffer->read(1, 0, Buffer::READ_PEEK));
         $fin = (bool) ($firstByte & 0b10000000);
@@ -140,11 +145,26 @@ class MessageDecoder implements EventEmitter
         return true;
     }
 
+    /**
+     * Unmask a data string using a key
+     *
+     * @param string $data The data string
+     * @param string $key  The key
+     *
+     * @return string The unmasked data
+     */
     private function unmaskData($data, $key)
     {
         return $data ^ str_pad($key, strlen($data), $key, STR_PAD_RIGHT);
     }
 
+    /**
+     * Construct a frame from the current pending frame header and a data buffer
+     *
+     * @param \WebSocketServer\Socket\Buffer $buffer The data buffer
+     *
+     * @return \WebSocketServer\Socket\Frame The constructed frame
+     */
     private function makeFrame(Buffer $buffer)
     {
         $data = $buffer->read($this->pendingFrameHeader['length']);
@@ -164,6 +184,13 @@ class MessageDecoder implements EventEmitter
         return $frame;
     }
 
+    /**
+     * Construct a message from an array of frames
+     *
+     * @param \WebSocketServer\Socket\Frame[] $frame The array of frames
+     *
+     * @return \WebSocketServer\Socket\Message The constructed message
+     */
     private function makeMessage(array $frames)
     {
         return $this->messageFactory->create($frames);
