@@ -44,7 +44,9 @@ function Room(connection, page) {
     this.removeUser = function(id) {
         var userElement = document.querySelector('#user-list li[data-id="' + id + '"]');
 
-        userElement.parentNode.removeChild(userElement);
+        if (userElement) {
+            userElement.parentNode.removeChild(userElement);
+        }
     };
 
     this.addMessage = function(message) {
@@ -257,8 +259,9 @@ function scrollOutOfBounds(previousY, newY) {
                     break;
 
                 case 'userDisconnected':
-                    room.removeUser(data.id);
-                    room.addNotification(data.message);
+                    // nobody leaves damnit
+                    //room.removeUser(data.id);
+                    //room.addNotification(data.message);
                     break;
 
                 // typing /idle
@@ -389,5 +392,10 @@ function scrollOutOfBounds(previousY, newY) {
         scrollContent(e.pageY - y);
     });
 
-    webSocketClient.connect('ws://www.chat.localhost:1337/chat-server.php');
+    var cookieManager = new CookieManager();
+
+    url = 'wss://localhost:1337/start.php?userid=' + cookieManager.getCookie('userid');
+    url = 'ws://www.chat.localhost:1337/chat-server.php?userid=' + cookieManager.getCookie('userid');
+
+    webSocketClient.connect(url);
 }());

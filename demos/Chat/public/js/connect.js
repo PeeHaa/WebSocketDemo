@@ -86,6 +86,10 @@ function Rooms() {
         var username = document.querySelector('input[name="username"]');
         var room = document.querySelector('select[name="room"]');
 
+        if (!room.value) {
+            return;
+        }
+
         webSocketClient.send(JSON.stringify({
             event: 'connect',
             username: username.value ? username.value : null,
@@ -97,7 +101,7 @@ function Rooms() {
     });
 
     url = 'wss://localhost:1337/start.php?userid=' + cookieManager.getCookie('userid');
-    url = 'wss://www.chat.localhost:1337/chat-server.php?userid=' + cookieManager.getCookie('userid');
+    url = 'ws://www.chat.localhost:1337/chat-server.php?userid=' + cookieManager.getCookie('userid');
 
     webSocketClient.connect(url);
 }());

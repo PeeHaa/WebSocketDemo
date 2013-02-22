@@ -23,17 +23,13 @@
             <th>Join room</th>
             <td>
               <select name="room">
-                <option value="">Create new room</option>
+                <option value="">Choose a room</option>
               </select>
             </td>
           </tr>
           <tr>
-            <th>Create room</th>
-            <th><input type="text" name="new_room"></th>
-          </tr>
-          <tr>
             <th>&nbsp;</th>
-            <th><input type="submit" name="submit" value="Join / create room"></th>
+            <th><input type="submit" name="submit" value="Join room"></th>
           </tr>
         </table>
       </form>
