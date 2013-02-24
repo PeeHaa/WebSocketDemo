@@ -399,7 +399,7 @@ function scrollOutOfBounds(previousY, newY) {
     var cookieManager = new CookieManager();
 
     url = 'wss://localhost:1337/start.php?userid=' + cookieManager.getCookie('userid');
-    url = 'ws://www.chat.localhost:1337/chat-server.php?userid=' + cookieManager.getCookie('userid');
+    url = 'ws://' + location.host + ':1337/chat-server.php?userid=' + cookieManager.getCookie('userid');
 
     webSocketClient.connect(url);
 }());
