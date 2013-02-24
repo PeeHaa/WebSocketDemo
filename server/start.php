@@ -8,6 +8,7 @@ use WebSocketServer\Core\ServerFactory,
     ChatLibrary\User\Factory as UserFactory,
     ChatLibrary\Room\Manager as RoomManager,
     ChatLibrary\Room\Entity as RoomEntity,
+    ChatLibrary\Room\Factory as RoomFactory,
     ChatLibrary\Core\Application as ChatApplication,
     ChatLibrary\Log\EchoOutput;
 
@@ -26,7 +27,8 @@ require __DIR__ . '/../demos/Chat/ChatLibrary/bootstrap.php';
 
 // setup the chat application
 $room = new RoomEntity(1, 'Sandbox');
-$roomManager = new RoomManager();
+$roomFactory = new RoomFactory();
+$roomManager = new RoomManager($roomFactory);
 
 $roomManager->add($room);
 

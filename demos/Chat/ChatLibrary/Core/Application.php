@@ -143,8 +143,6 @@ class Application
                         return;
 
                     case 'connect':
-                        $room = $this->roomManager->getById($data->roomId);
-
                         // check whether username is set
                         if (!trim($data->username)) {
                             $client->sendText(json_encode([
@@ -173,12 +171,18 @@ class Application
                             return;
                         }
 
+                        if (!trim($data->roomId)) {
+                            $room = $this->roomManager->create($data->roomName);
+                        } else {
+                            $room = $this->roomManager->getById($data->roomId);
+                        }
+
                         $user->setUsername($data->username);
                         $room->addUser($user);
 
                         $client->sendText(json_encode([
                             'event'  => $data->event,
-                            'roomId' => $data->roomId,
+                            'roomId' => $room->getId(),
                             'result' => 'success',
                         ]));
 

@@ -13,7 +13,8 @@
  */
 namespace ChatLibrary\Room;
 
-use ChatLibrary\Room\Entity;
+use ChatLibrary\Room\Entity,
+    ChatLibrary\Room\Factory;
 
 /**
  * This class represent all chatrooms currently active
@@ -25,9 +26,39 @@ use ChatLibrary\Room\Entity;
 class Manager
 {
     /**
+     * @var \ChatLibrary\Room\Factory The room factory
+     */
+    private $roomFactory;
+
+    /**
      * @var array The collection of the active rooms
      */
     private $rooms = [];
+
+    /**
+     * Build the instance
+     *
+     * @param \ChatLibrary\Room\Factory $roomFactory The room builder
+     */
+    public function __construct(Factory $roomFactory)
+    {
+        $this->roomFactory = $roomFactory;
+    }
+
+    /**
+     * Create a new room
+     *
+     * @param string $name The name of the new room (we don't care about duplicate names, that's how we roll)
+     *
+     * @return int The id of thew new room
+     */
+    public function create($name)
+    {
+        $room = $this->roomFactory->create(count($this->rooms) + 1, $name);
+        $this->add($room);
+
+        return $room;
+    }
 
     /**
      * Add an active room
