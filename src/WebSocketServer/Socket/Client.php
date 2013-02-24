@@ -357,7 +357,8 @@ class Client implements EventEmitter
             if (!$this->handshake->isComplete()) {
                 $this->shakeHands();
             } else {
-                $this->messageDecoder->processData($this->buffer);
+                // keep processing until there are no complete frames left in the buffer
+                while ($this->messageDecoder->processData($this->buffer));
             }
         }
     }
