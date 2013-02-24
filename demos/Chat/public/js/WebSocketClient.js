@@ -1,5 +1,5 @@
 function WebSocketClient(callbacks) {
-    this.debug = true;
+    this.debug = false;
     this.callbacks = callbacks;
 
     this.connected = false;
