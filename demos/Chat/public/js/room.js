@@ -276,6 +276,10 @@ function scrollOutOfBounds(previousY, newY) {
                 case 'sendMessage':
                     room.addMessage(data.message);
                     break;
+
+                case 'error':
+                    location.href = '/';
+                    break;
             }
         },
         onerror: function(data) {

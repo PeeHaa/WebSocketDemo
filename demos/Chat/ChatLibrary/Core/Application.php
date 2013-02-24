@@ -198,6 +198,20 @@ class Application
                     case 'loadRoom':
                         $user->setStatus(UserEntity::STATUS_ONLINE);
                         $room = $this->roomManager->getById($data->roomId);
+
+                        if ($room === null) {
+                            $client->sendText(json_encode([
+                                'event'  => 'error',
+                                'errors' => [
+                                    [
+                                        'name'    => 'room',
+                                        'message' => 'Invalid room chosen',
+                                    ],
+                                ],
+                            ]));
+                            return;
+                        }
+
                         $userCollection = $room->getUsers();
 
                         $users = [];
