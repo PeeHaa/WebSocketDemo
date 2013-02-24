@@ -72,6 +72,10 @@ body.loading {
     padding: 6px;
 }
 
+#connect input[name=username].error {
+    border: 1px solid red;
+}
+
 #connect input[type=submit] {
     width: 220px;
 }

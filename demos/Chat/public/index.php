@@ -23,8 +23,14 @@
             <th>Join room</th>
             <td>
               <select name="room">
-                <option value="">Choose a room</option>
+                <option value="">Create a room</option>
               </select>
+            </td>
+          </tr>
+          <tr>
+            <th>Create room</th>
+            <td>
+              <input type="text" name="new" placeholder="New room">
             </td>
           </tr>
           <tr>
@@ -38,6 +44,7 @@
       </div>
     </div>
     <script src="/js/WebSocketClient.js"></script>
+    <script src="/js/DomHandler.js"></script>
     <script src="/js/CookieManager.js"></script>
     <script src="/js/connect.js"></script>
   </body>

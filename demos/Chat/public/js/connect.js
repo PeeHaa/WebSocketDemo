@@ -19,7 +19,7 @@ function Authentication() {
             errorCell = document.createElement('td'),
             errorText = document.createTextNode('Invalid room chosen.');
 
-        errorRow.className = 'error';
+        $(errorRow).addClass('error');
         errorCell.setAttribute('colspan', '2');
 
         errorCell.appendChild(errorText);
@@ -73,6 +73,11 @@ function Rooms() {
                 case 'listRooms':
                     rooms.load(parsedData.rooms);
                     break;
+
+                case 'error':
+                    console.log('errrors');
+                    $(document.querySelector('input[name="username"]')).addClass('error');
+                    break;
             }
         },
         onerror: function(data) {
@@ -86,6 +91,11 @@ function Rooms() {
         var username = document.querySelector('input[name="username"]');
         var room = document.querySelector('select[name="room"]');
 
+        e.preventDefault();
+        e.stopPropagation();
+
+        $(username).removeClass('error');
+
         if (!room.value) {
             return;
         }
@@ -95,9 +105,6 @@ function Rooms() {
             username: username.value ? username.value : null,
             roomId: room.value
         }));
-
-        e.preventDefault();
-        e.stopPropagation();
     });
 
     url = 'wss://localhost:1337/start.php?userid=' + cookieManager.getCookie('userid');

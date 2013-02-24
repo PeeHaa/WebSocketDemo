@@ -51,9 +51,9 @@ class Application
     /**
      * Construct the application
      *
-     * @param \WebSocketServer\Core\Server   $server      The websocket server
-     * @param \ChatLibrary\User\Manager $userManager The user manager
-     * @param \ChatLibrary\Room\Manager $roomManager The room manager
+     * @param \WebSocketServer\Core\Server $server      The websocket server
+     * @param \ChatLibrary\User\Manager    $userManager The user manager
+     * @param \ChatLibrary\Room\Manager    $roomManager The room manager
      */
     public function __construct(Server $server, UserManager $userManager, RoomManager $roomManager)
     {
@@ -144,11 +144,20 @@ class Application
 
                     case 'connect':
                         $room = $this->roomManager->getById($data->roomId);
+
+                        if (!trim($data->username)) {
+                            $client->sendText(json_encode([
+                                'event'   => 'error',
+                                'message' => 'Username is required',
+                            ]));
+                            return;
+                        }
+
                         $user->setUsername($data->username);
                         $room->addUser($user);
 
                         $client->sendText(json_encode([
-                            'event' => $data->event,
+                            'event'  => $data->event,
                             'roomId' => $data->roomId,
                             'result' => 'success',
                         ]));
