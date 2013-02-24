@@ -75,8 +75,17 @@ function Rooms() {
                     break;
 
                 case 'error':
-                    console.log('errrors');
-                    $(document.querySelector('input[name="username"]')).addClass('error');
+                    for (var i = 0, l = parsedData.errors.length; i < l; i++) {
+                        switch(parsedData.errors[i].name) {
+                            case 'username':
+                                $(document.querySelector('input[name="username"]')).addClass('error');
+                                break;
+
+                            case 'room':
+                                $(document.querySelector('select[name="room"]')).addClass('error');
+                                break;
+                        }
+                    }
                     break;
             }
         },
@@ -87,7 +96,16 @@ function Rooms() {
 
     var form = document.querySelector('form');
 
-    form.addEventListener('submit', function(e) {
+    $(form.querySelector('select')).on('change', function(e) {
+        $(form.querySelector('.new')).removeClass('active');
+
+        var roomValue = form.querySelector('select').options[form.querySelector('select').selectedIndex].value;
+        if (!roomValue) {
+            $(form.querySelector('.new')).addClass('active');
+        }
+    });
+
+    $(form).on('submit', function(e) {
         var username = document.querySelector('input[name="username"]');
         var room = document.querySelector('select[name="room"]');
 
@@ -95,15 +113,19 @@ function Rooms() {
         e.stopPropagation();
 
         $(username).removeClass('error');
+        $(room).removeClass('error');
 
-        if (!room.value) {
+        var roomValue = form.querySelector('select').options[form.querySelector('select').selectedIndex].value;
+
+        if (!roomValue && !form.querySelector('input[name="new"]').value) {
             return;
         }
 
         webSocketClient.send(JSON.stringify({
             event: 'connect',
             username: username.value ? username.value : null,
-            roomId: room.value
+            roomId: roomValue,
+            roomName: form.querySelector('input[name="new"]').value
         }));
     });
 

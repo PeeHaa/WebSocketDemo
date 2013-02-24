@@ -145,10 +145,30 @@ class Application
                     case 'connect':
                         $room = $this->roomManager->getById($data->roomId);
 
+                        // check whether username is set
                         if (!trim($data->username)) {
                             $client->sendText(json_encode([
-                                'event'   => 'error',
-                                'message' => 'Username is required',
+                                'event'  => 'error',
+                                'errors' => [
+                                    [
+                                        'name'    => 'username',
+                                        'message' => 'Username is required',
+                                    ],
+                                ],
+                            ]));
+                            return;
+                        }
+
+                        // check whether room is set or created
+                        if (!trim($data->roomId) && !trim($data->roomName)) {
+                            $client->sendText(json_encode([
+                                'event'  => 'error',
+                                'errors' => [
+                                    [
+                                        'name'    => 'room',
+                                        'message' => 'Room is required',
+                                    ],
+                                ],
                             ]));
                             return;
                         }

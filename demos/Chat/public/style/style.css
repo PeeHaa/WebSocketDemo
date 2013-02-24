@@ -76,6 +76,10 @@ body.loading {
     border: 1px solid red;
 }
 
+#connect select.error {
+    border: 1px solid red;
+}
+
 #connect input[type=submit] {
     width: 220px;
 }
@@ -83,6 +87,14 @@ body.loading {
 #connect select {
     width: 220px;
     padding: 5px;
+}
+
+#connect .new {
+    display: none;
+}
+
+#connect .new.active {
+    display: table-row;
 }
 
 th {

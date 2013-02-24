@@ -23,11 +23,11 @@
             <th>Join room</th>
             <td>
               <select name="room">
-                <option value="">Create a room</option>
+                <option value="">Create a new room</option>
               </select>
             </td>
           </tr>
-          <tr>
+          <tr class="new active">
             <th>Create room</th>
             <td>
               <input type="text" name="new" placeholder="New room">
