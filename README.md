@@ -35,4 +35,4 @@ License
 Status of the project
 -
 
-This is just the result of some quick gluing code together.
+This is just the result of some quick duct-taping code together.
